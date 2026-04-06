@@ -1,0 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+:root {
+  --background: #f5f5f5;
+  --foreground: #171717;
+  /* Brand primary — use for buttons, At a Glance labels & counts, accents */
+  --primary: hsla(191, 47%, 35%, 1);
+  --primary-500: hsla(191, 47%, 35%, 1);
+  --teal-primary: #0d9488;
+  --teal-light: #5eead4;
+  --teal-dark: #0f766e;
+  --purple-accent: #a855f7;
+  --font-poppins: 'Poppins', sans-serif;
+  --font-inter: 'Inter', sans-serif;
+  --font-source-sans-3: 'Source Sans 3', sans-serif;
+  --main-section-padding-x: 80px;
+  --sds-size-depth-0: 0;
+  --sds-size-depth-100: 4px;
+  --sds-size-depth-negative-025: -1px;
+  --sds-color-black-100: rgba(0, 0, 0, 0.1);
+  --sds-color-black-200: rgba(0, 0, 0, 0.2);
+  --resident-card-shadow: var(--sds-size-depth-0) var(--sds-size-depth-100) var(--sds-size-depth-100) var(--sds-size-depth-negative-025) var(--sds-color-black-100), var(--sds-size-depth-0) var(--sds-size-depth-100) var(--sds-size-depth-100) var(--sds-size-depth-negative-025) var(--sds-color-black-200);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-source-sans-3), sans-serif;
+}
+
+button,
+[type="button"],
+[type="submit"],
+[type="reset"],
+[role="button"],
+a,
+a[href] {
+  cursor: pointer;
+}
+
+.font-poppins {
+  font-family: var(--font-poppins), sans-serif;
+}
+
+.font-inter {
+  font-family: var(--font-inter), sans-serif;
+}
+
+.font-source-sans-3 {
+  font-family: var(--font-source-sans-3), sans-serif;
+}
+
+.main-section-padding-x {
+  padding-left: var(--main-section-padding-x);
+  padding-right: var(--main-section-padding-x);
+}
+
+/* At a Glance — info popover list */
+.at-a-glance-detail-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) #e5e7eb;
+}
+
+.at-a-glance-detail-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.at-a-glance-detail-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--primary);
+  border-radius: 3px;
+}
+
+.at-a-glance-detail-scroll::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
