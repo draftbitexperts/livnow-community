@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import calendarIcon from '../../LivNow Icons/calendar.png';
+import { BottomToast, type BottomToastPayload } from '@/components/BottomToast';
+import { ThemeDateTimePicker } from '@/components/ThemeDateTimePicker';
 
 interface RequestEventDrawerProps {
   open: boolean;
@@ -20,68 +21,13 @@ function RequiredLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function DateTimePickerField({
-  id,
-  label,
-  required,
-  value,
-  onChange,
+function RequestEventPanel({
+  onClose,
+  onNotify,
 }: {
-  id: string;
-  label: string;
-  required?: boolean;
-  value: string;
-  onChange: (v: string) => void;
+  onClose: () => void;
+  onNotify: (payload: BottomToastPayload) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const openPicker = () => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.focus();
-    if (typeof el.showPicker === 'function') {
-      try {
-        el.showPicker();
-      } catch {
-        el.click();
-      }
-    } else {
-      el.click();
-    }
-  };
-
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1 block">
-        {required ? (
-          <RequiredLabel>{label}</RequiredLabel>
-        ) : (
-          <span className="text-sm font-bold text-gray-900">{label}</span>
-        )}
-      </label>
-      <div className="relative">
-        <input
-          ref={inputRef}
-          id={id}
-          type="datetime-local"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-11 text-sm text-gray-800 focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30"
-        />
-        <button
-          type="button"
-          onClick={openPicker}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-[var(--primary)] transition-opacity hover:opacity-80"
-          aria-label={`Open calendar for ${label}`}
-        >
-          <img src={calendarIcon} alt="" width={20} height={20} className="h-5 w-5 object-contain" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function RequestEventPanel({ onClose }: { onClose: () => void }) {
   const { user } = useAuth();
   const requesterDisplay = user?.name?.trim() || user?.email || '—';
 
@@ -90,11 +36,31 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
   const [community, setCommunity] = useState('');
   const [startDateTime, setStartDateTime] = useState('2026-04-16T10:00');
   const [endDateTime, setEndDateTime] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{
+    eventType?: string;
+    community?: string;
+    startDateTime?: string;
+  }>({});
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(id);
   }, []);
+
+  const validate = () => {
+    const next: typeof fieldErrors = {};
+    if (eventType === null) {
+      next.eventType = 'Select an event type.';
+    }
+    if (!community.trim()) {
+      next.community = 'Select a community.';
+    }
+    if (!startDateTime.trim()) {
+      next.startDateTime = 'Select a start date and time.';
+    }
+    setFieldErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
   return (
     <>
@@ -150,7 +116,18 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
           className="flex flex-1 flex-col gap-6 overflow-y-auto px-5 py-6"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!validate()) {
+              onNotify({
+                variant: 'error',
+                message: 'Please complete all required fields before saving.',
+              });
+              return;
+            }
             // TODO: API
+            onNotify({
+              variant: 'success',
+              message: 'Event request submitted successfully.',
+            });
             onClose();
           }}
         >
@@ -167,7 +144,10 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
                     type="radio"
                     name="eventType"
                     checked={eventType === 'in-person'}
-                    onChange={() => setEventType('in-person')}
+                    onChange={() => {
+                      setEventType('in-person');
+                      setFieldErrors((prev) => ({ ...prev, eventType: undefined }));
+                    }}
                     className="h-4 w-4 shrink-0 border-gray-300"
                     style={{ accentColor: 'var(--primary)' }}
                   />
@@ -178,20 +158,28 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
                     type="radio"
                     name="eventType"
                     checked={eventType === 'webinar'}
-                    onChange={() => setEventType('webinar')}
+                    onChange={() => {
+                      setEventType('webinar');
+                      setFieldErrors((prev) => ({ ...prev, eventType: undefined }));
+                    }}
                     className="h-4 w-4 shrink-0 border-gray-300"
                     style={{ accentColor: 'var(--primary)' }}
                   />
                   Webinar
                 </label>
               </div>
+              {fieldErrors.eventType ? (
+                <p className="mt-2 text-sm text-red-600" role="alert">
+                  {fieldErrors.eventType}
+                </p>
+              ) : null}
             </fieldset>
           </div>
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
               <div className="mb-1">
-                <RequiredLabel>Requested By</RequiredLabel>
+                <span className="text-sm font-bold text-gray-900">Requested By</span>
               </div>
               <div
                 className="w-full cursor-default select-none rounded-lg border border-gray-200 bg-gray-50 py-2.5 px-3 text-sm text-gray-800"
@@ -208,8 +196,17 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
                 <select
                   id="community"
                   value={community}
-                  onChange={(e) => setCommunity(e.target.value)}
-                  className="w-full appearance-none rounded-lg border border-gray-300 bg-white py-2.5 pl-3 pr-10 text-sm text-gray-800 focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30"
+                  onChange={(e) => {
+                    setCommunity(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, community: undefined }));
+                  }}
+                  aria-invalid={Boolean(fieldErrors.community)}
+                  aria-describedby={fieldErrors.community ? 'community-error' : undefined}
+                  className={`w-full appearance-none rounded-lg border bg-white py-2.5 pl-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/30 ${
+                    fieldErrors.community
+                      ? 'border-red-500 focus:border-red-500 focus:ring-red-200'
+                      : 'border-gray-300 focus:border-[var(--primary)]'
+                  } text-gray-800`}
                 >
                   <option value="">Select Community</option>
                   <option value="a">Community A</option>
@@ -221,22 +218,33 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
                   aria-hidden
                 />
               </div>
+              {fieldErrors.community ? (
+                <p id="community-error" className="mt-1 text-sm text-red-600" role="alert">
+                  {fieldErrors.community}
+                </p>
+              ) : null}
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <DateTimePickerField
+            <ThemeDateTimePicker
               id="event-start"
               label="Event Start Date & Time"
               required
+              allowClear={false}
               value={startDateTime}
-              onChange={setStartDateTime}
+              onChange={(v) => {
+                setStartDateTime(v);
+                setFieldErrors((prev) => ({ ...prev, startDateTime: undefined }));
+              }}
+              error={fieldErrors.startDateTime}
             />
-            <DateTimePickerField
+            <ThemeDateTimePicker
               id="event-end"
               label="Event End Date & Time"
               value={endDateTime}
               onChange={setEndDateTime}
+              emptyLabel="Select a date"
             />
           </div>
 
@@ -258,6 +266,8 @@ function RequestEventPanel({ onClose }: { onClose: () => void }) {
 }
 
 export default function RequestEventDrawer({ open, onClose }: RequestEventDrawerProps) {
+  const [toast, setToast] = useState<BottomToastPayload | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -276,11 +286,20 @@ export default function RequestEventDrawer({ open, onClose }: RequestEventDrawer
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[200] font-source-sans-3">
-      <RequestEventPanel onClose={onClose} />
-    </div>
+    <>
+      {open ? (
+        <div className="fixed inset-0 z-[200] font-source-sans-3">
+          <RequestEventPanel onClose={onClose} onNotify={setToast} />
+        </div>
+      ) : null}
+      {toast ? (
+        <BottomToast
+          message={toast.message}
+          variant={toast.variant}
+          onDismiss={() => setToast(null)}
+        />
+      ) : null}
+    </>
   );
 }
