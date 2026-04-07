@@ -1,163 +1,326 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, Search, Bell } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Menu, Search, Bell, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useSidebarLayout } from '@/contexts/SidebarLayoutContext';
+import { useDemoResidents } from '@/contexts/DemoResidentsContext';
+import { findDemoResidentInList, residentDisplayName } from '@/lib/demoResidents';
 
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== 'undefined' ? window.matchMedia(query).matches : false,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const onChange = () => setMatches(mq.matches);
-    onChange();
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [query]);
-
-  return matches;
+interface HeaderProps {
+  onMenuClick: () => void;
+  variant?: 'desktop' | 'tablet' | 'mobile';
+  /** When set, overrides auth name for greeting / initials (Admin parity) */
+  userName?: string | null;
+  /** Under title, e.g. All Residents > Mary Smith */
+  breadcrumb?: { parentLabel: string; parentHref?: string; currentLabel: string };
 }
 
-/** Account dropdown row hover / highlight (light blue-gray), matches design reference */
-const accountMenuRowClass =
-  'w-full rounded-lg px-3 py-2.5 text-left text-sm font-bold text-gray-900 transition-colors font-source-sans-3 hover:bg-[hsla(197,32%,91%,1)] focus:outline-none focus-visible:bg-[hsla(197,32%,91%,1)] focus-visible:ring-2 focus-visible:ring-[var(--primary)]/25';
-
-export default function Header({ onMenuClick }: { onMenuClick?: () => void }) {
-  const { user, logout } = useAuth();
+export default function Header({
+  onMenuClick,
+  variant = 'desktop',
+  userName,
+  breadcrumb,
+}: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const prefersHover = useMediaQuery('(hover: hover)');
-  const [accountOpen, setAccountOpen] = useState(false);
-  const accountRef = useRef<HTMLDivElement>(null);
+  const { user, logout } = useAuth();
+  const { sidebarWidth } = useSidebarLayout();
+  const { records } = useDemoResidents();
 
-  const displayName = user?.name ?? 'User';
+  const residentSegment = location.pathname.match(/^\/residents\/([^/]+)$/)?.[1];
+  const residentBreadcrumb =
+    residentSegment && residentSegment !== 'all'
+      ? (() => {
+          const r = findDemoResidentInList(records, residentSegment);
+          if (!r) return undefined;
+          return {
+            parentLabel: 'All Residents',
+            parentHref: '/residents/all',
+            currentLabel: residentDisplayName(r),
+          };
+        })()
+      : undefined;
 
-  const initials = user?.name
-    ? user.name
-        .split(/\s+/)
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
-    : 'U';
+  const effectiveBreadcrumb = breadcrumb ?? residentBreadcrumb;
+
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  const rawName =
+    userName ??
+    user?.name ??
+    user?.email?.split('@')[0] ??
+    'User';
+
+  const displayName =
+    rawName.length === 0
+      ? rawName
+      : rawName
+          .trim()
+          .split(/\s+/)
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+
+  const pageTitle = (() => {
+    const path = location.pathname;
+    if (path === '/residents/all' || path.startsWith('/residents/')) return 'Residents';
+    if (path === '/communities') return 'Communities';
+    if (path === '/team') return 'Team';
+    if (path === '/knowledge-base') return 'Knowledge Base';
+    if (path === '/profile') return 'User Profile';
+    return `Hi, ${displayName}`;
+  })();
+
+  const initials =
+    rawName
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase() || displayName.slice(0, 2).toUpperCase();
 
   useEffect(() => {
-    if (!accountOpen) return;
-    const onDocPointerDown = (e: PointerEvent) => {
-      if (!accountRef.current?.contains(e.target as Node)) {
-        setAccountOpen(false);
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
       }
-    };
-    document.addEventListener('pointerdown', onDocPointerDown);
-    return () => document.removeEventListener('pointerdown', onDocPointerDown);
-  }, [accountOpen]);
+    }
+    if (profileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [profileMenuOpen]);
 
   const handleLogout = () => {
-    setAccountOpen(false);
+    setProfileMenuOpen(false);
     logout();
     navigate('/', { replace: true });
   };
 
-  return (
-    <header className="flex h-16 items-center justify-between gap-4 bg-[#F0F4F7] px-4 sm:gap-5 sm:px-6 lg:px-8">
-      <div className="flex min-w-0 shrink items-center gap-2">
-        {onMenuClick && (
-          <button
-            type="button"
-            className="flex-shrink-0 rounded-lg p-2 text-[var(--primary)] hover:bg-gray-200/70 lg:hidden"
-            aria-label="Open menu"
-            onClick={onMenuClick}
-          >
-            <Menu size={22} strokeWidth={2} aria-hidden />
-          </button>
-        )}
-        <h1 className="min-w-0 max-w-[7.5rem] truncate text-base font-semibold text-gray-900 sm:max-w-none sm:overflow-visible sm:whitespace-normal sm:text-lg md:text-xl lg:text-2xl font-source-sans-3">
-          Hi, {displayName}
-        </h1>
-      </div>
-
-      <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3 md:gap-4">
-        <div className="relative w-[min(100%,7.5rem)] min-w-0 sm:w-52 md:w-60 lg:w-64">
-          <input
-            type="search"
-            placeholder="Search..."
-            className="w-full rounded-full border border-gray-200/90 bg-white py-2.5 pl-4 pr-10 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[var(--primary)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]/25 font-source-sans-3"
-            aria-label="Search"
-          />
-          <Search
-            size={16}
-            strokeWidth={2}
-            className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--primary)]"
-            aria-hidden
-          />
-        </div>
+  if (variant === 'mobile') {
+    return (
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 text-white"
+        style={{ backgroundColor: '#307584' }}
+      >
         <button
           type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--primary)] bg-white text-[var(--primary)] transition-colors hover:bg-gray-50"
-          aria-label="Notifications"
+          onClick={onMenuClick}
+          className="rounded p-2 transition-opacity hover:opacity-80"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
         >
-          <Bell size={18} strokeWidth={2} aria-hidden />
+          <Menu size={24} />
         </button>
-
-        <div
-          ref={accountRef}
-          className="relative"
-          onMouseEnter={() => prefersHover && setAccountOpen(true)}
-          onMouseLeave={() => prefersHover && setAccountOpen(false)}
+        <h1 className="text-sm font-medium">{pageTitle}</h1>
+        <button
+          type="button"
+          className="rounded p-2 transition-opacity hover:opacity-80"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
         >
-          <button
-            type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-white text-sm font-semibold text-white shadow-sm outline-none transition-opacity hover:opacity-95 focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 font-source-sans-3"
-            style={{ backgroundColor: 'var(--primary)' }}
-            aria-expanded={accountOpen}
-            aria-haspopup="menu"
-            aria-label="Account menu"
-            onClick={() => {
-              if (!prefersHover) {
-                setAccountOpen((o) => !o);
-              }
+          <Search size={20} />
+        </button>
+      </header>
+    );
+  }
+
+  if (variant === 'tablet') {
+    return (
+      <header
+        className="sticky top-0 z-30 flex items-center justify-between px-4 py-3 text-white"
+        style={{ backgroundColor: '#307584' }}
+      >
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="rounded p-2 transition-opacity hover:opacity-80"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+        >
+          <Menu size={24} />
+        </button>
+        <h1 className="text-base font-medium">{pageTitle}</h1>
+        <button
+          type="button"
+          className="rounded p-2 transition-opacity hover:opacity-80"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+        >
+          <Search size={20} />
+        </button>
+      </header>
+    );
+  }
+
+  return (
+    <header
+      className="fixed top-0 z-30 flex items-center justify-center"
+      style={{
+        left: sidebarWidth,
+        right: 0,
+        height: '110px',
+        backgroundColor: '#F0F5F7',
+        paddingTop: '36px',
+        paddingBottom: '24px',
+        paddingLeft: 0,
+        paddingRight: 0,
+      }}
+    >
+      <div
+        className="flex w-full min-w-0 items-center justify-between gap-4"
+        style={{
+          paddingLeft: 'var(--main-section-padding-x, 80px)',
+          paddingRight: 'var(--main-section-padding-x, 80px)',
+        }}
+      >
+        <div>
+          <h1
+            className="font-poppins"
+            style={{
+              fontFamily: 'var(--font-poppins), sans-serif',
+              fontWeight: 600,
+              fontSize: '42px',
+              lineHeight: '100%',
+              letterSpacing: '0%',
+              verticalAlign: 'bottom',
+              color: '#323234',
+              textAlign: 'left',
+              margin: 0,
+              padding: 0,
             }}
           >
-            {initials}
-          </button>
-
-          {accountOpen && (
-            <div
-              className="absolute right-0 top-full z-50 pt-2"
-              role="menu"
-              aria-label="Account"
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <div className="w-[min(calc(100vw-2rem),13.5rem)] rounded-xl bg-white px-3 py-3 text-left shadow-lg">
-                <p className="mb-2 px-2 text-xs font-bold text-gray-500 font-source-sans-3">Account</p>
-                <ul className="flex flex-col gap-1 p-0">
-                  <li>
-                    <Link
-                      to="/profile"
-                      role="menuitem"
-                      className={`block ${accountMenuRowClass} ${
-                        location.pathname.startsWith('/profile') ? 'bg-[hsla(197,32%,91%,1)]' : ''
-                      }`}
-                      onClick={() => setAccountOpen(false)}
-                    >
-                      User Profile
-                    </Link>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className={accountMenuRowClass}
-                      onClick={handleLogout}
-                    >
-                      Logout
-                    </button>
-                  </li>
-                </ul>
-              </div>
-            </div>
+            {pageTitle}
+          </h1>
+          {effectiveBreadcrumb && (
+            <nav className="mt-2 flex items-center gap-2 font-source-sans-3">
+              {effectiveBreadcrumb.parentHref != null ? (
+                <a
+                  href={effectiveBreadcrumb.parentHref}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate(effectiveBreadcrumb.parentHref!);
+                  }}
+                  className="hover:opacity-90"
+                  style={{
+                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+                    fontWeight: 500,
+                    fontSize: 20,
+                    lineHeight: '24px',
+                    letterSpacing: '0%',
+                    color: '#323234',
+                    textDecoration: 'none',
+                    margin: 0,
+                    padding: 0,
+                  }}
+                >
+                  {effectiveBreadcrumb.parentLabel}
+                </a>
+              ) : (
+                <span
+                  style={{
+                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+                    fontWeight: 500,
+                    fontSize: 20,
+                    lineHeight: '24px',
+                    letterSpacing: '0%',
+                    color: '#323234',
+                    margin: 0,
+                    padding: 0,
+                  }}
+                >
+                  {effectiveBreadcrumb.parentLabel}
+                </span>
+              )}
+              <ChevronRight
+                size={20}
+                strokeWidth={2}
+                className="flex-shrink-0"
+                style={{ color: '#323234' }}
+                aria-hidden
+              />
+              <span
+                style={{
+                  fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+                  fontWeight: 600,
+                  fontSize: 20,
+                  lineHeight: '24px',
+                  letterSpacing: '0%',
+                  color: '#359689',
+                  margin: 0,
+                  padding: 0,
+                }}
+              >
+                {effectiveBreadcrumb.currentLabel}
+              </span>
+            </nav>
           )}
+        </div>
+        <div className="flex items-center gap-4" style={{ justifyContent: 'flex-end' }}>
+          <div
+            className="relative flex items-center"
+            style={{
+              width: '465px',
+              height: '50px',
+              borderRadius: '360px',
+              backgroundColor: '#FFFFFF',
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Search..."
+              className="h-full w-full bg-transparent px-4 pr-12 outline-none"
+              style={{ borderRadius: '360px' }}
+              aria-label="Search"
+            />
+            <button type="button" className="absolute right-4 p-2">
+              <Search size={20} className="text-gray-600" />
+            </button>
+          </div>
+          <button
+            type="button"
+            disabled
+            aria-label="Notifications (coming soon)"
+            title="Notifications coming soon"
+            className="relative flex cursor-not-allowed items-center justify-center rounded-full border border-gray-300 p-2 opacity-70"
+            style={{ width: '40px', height: '40px', borderWidth: '1px' }}
+          >
+            <Bell size={24} className="text-gray-500" />
+          </button>
+          <div className="relative" ref={profileMenuRef}>
+            <button
+              type="button"
+              onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full font-inter font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: '#307584' }}
+              aria-expanded={profileMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Account menu"
+            >
+              {initials}
+            </button>
+            {profileMenuOpen && (
+              <div className="absolute right-0 z-50 mt-2 w-48 rounded-lg border border-gray-200 bg-white shadow-lg">
+                <div className="py-1">
+                  <div className="px-4 py-2 font-source-sans-3 text-xs text-gray-500">Account</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      navigate('/profile');
+                    }}
+                    className="w-full px-4 py-2 text-left font-source-sans-3 text-sm font-bold text-gray-900 hover:bg-gray-100"
+                  >
+                    User Profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full px-4 py-2 text-left font-source-sans-3 text-sm font-bold text-gray-900 hover:bg-gray-100"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

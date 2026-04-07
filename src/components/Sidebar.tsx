@@ -11,6 +11,19 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useSidebarLayout } from '@/contexts/SidebarLayoutContext';
+import { useDemoResidents } from '@/contexts/DemoResidentsContext';
+import { findDemoResidentInList, residentDisplayName } from '@/lib/demoResidents';
+
+function humanizeResidentRouteParam(param: string): string {
+  const d = decodeURIComponent(param).trim();
+  if (!d) return 'All Residents';
+  return d
+    .replace(/_/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
 
 /** Heart inside circle outline — matches LivNow-Admin Sidebar */
 function HeartCircleIcon({ size = 22 }: { size?: number }) {
@@ -81,8 +94,22 @@ const selectedNavItemStyle: CSSProperties = {
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const location = useLocation();
   const { collapsed, setCollapsed, sidebarWidth } = useSidebarLayout();
+  const { records } = useDemoResidents();
 
   const residentsActive = location.pathname.startsWith('/residents');
+
+  const residentSegment = location.pathname.match(/^\/residents\/([^/]+)$/)?.[1];
+  const residentsNavLabel =
+    residentSegment && residentSegment !== 'all'
+      ? (() => {
+          const r = findDemoResidentInList(records, residentSegment);
+          return r ? residentDisplayName(r) : humanizeResidentRouteParam(residentSegment);
+        })()
+      : 'All Residents';
+
+  /** Admin parity: on detail, nav item keeps current URL; on list, go to All Residents */
+  const residentsNavHref =
+    residentsNavLabel !== 'All Residents' ? location.pathname : '/residents/all';
 
   const sections = [
     {
@@ -100,8 +127,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       smallLabel: 'Residents',
       items: [
         {
-          label: 'All Residents',
-          href: '/residents/all',
+          label: residentsNavLabel,
+          href: residentsNavHref,
           icon: User,
           active: residentsActive,
           trailingCaret: true,

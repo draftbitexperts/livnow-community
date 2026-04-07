@@ -28,6 +28,10 @@ import clipboardClose from '../../LivNow Icons/clipboard-close.png';
 import tickCircle from '../../LivNow Icons/tick-circle.png';
 import calendarIcon from '../../LivNow Icons/calendar.png';
 import RequestEventDrawer from '@/components/RequestEventDrawer';
+import {
+  DashboardViewMultiSelect,
+  type DashboardViewOption,
+} from '@/components/DashboardViewMultiSelect';
 
 function Section({
   title,
@@ -128,6 +132,25 @@ const REFERRAL_MONTHS_ALL = [
 
 /** Start index so the rightmost card is the latest month (slide Previous = one month older). */
 const REFERRAL_CAROUSEL_MAX_START = Math.max(0, REFERRAL_MONTHS_ALL.length - 3);
+
+/** Dashboard View filter — demo list; TODO: API */
+const DASHBOARD_VIEW_COMMUNITY_OPTIONS: DashboardViewOption[] = [
+  { id: 'raz-mobility', label: 'RAZ Mobility' },
+  { id: 'arrow-senior', label: 'Arrow Senior Living Advisors' },
+  { id: 'alix', label: 'Alix' },
+  { id: 'admiral-lake', label: 'The Admiral at the Lake' },
+  { id: 'clarendale-six', label: 'Clarendale Six Corners Community' },
+  { id: 'riddle-village', label: 'Riddle Village Retirement Community' },
+  { id: 'penick-village', label: 'Penick Village' },
+  { id: 'king-bruwaert', label: 'King-Bruwaert House' },
+  { id: 'sunrise-lincoln', label: 'Sunrise of Lincoln Park' },
+  { id: 'waterford-oak', label: 'The Waterford at Oak Brook' },
+  { id: 'heritage-spring', label: 'Heritage Springs Living' },
+  { id: 'meadowbrook', label: 'Meadowbrook Senior Residences' },
+  { id: 'riverside-commons', label: 'Riverside Commons' },
+  { id: 'oakwood-terrace', label: 'Oakwood Terrace' },
+  { id: 'willow-creek', label: 'Willow Creek Retirement' },
+];
 
 function ReferralMonthCard({
   cardKey,
@@ -843,6 +866,10 @@ function UpcomingEventsCalendar() {
 }
 
 export default function Dashboard() {
+  const [dashboardCommunityIds, setDashboardCommunityIds] = useState<string[]>([
+    'raz-mobility',
+    'arrow-senior',
+  ]);
   const [requestEventOpen, setRequestEventOpen] = useState(false);
   const [atAGlanceOpenLabel, setAtAGlanceOpenLabel] = useState<string | null>(null);
   const [referralOpenKey, setReferralOpenKey] = useState<string | null>(null);
@@ -914,6 +941,23 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 sm:p-8">
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+          <h2 className="min-w-0 flex-[1] text-lg font-semibold text-gray-900 font-source-sans-3">
+            Dashboard View
+          </h2>
+          <div className="flex min-w-0 flex-[2] items-center">
+            <DashboardViewMultiSelect
+              id="dashboard-view"
+              options={DASHBOARD_VIEW_COMMUNITY_OPTIONS}
+              selectedIds={dashboardCommunityIds}
+              onSelectionChange={setDashboardCommunityIds}
+              placeholder="Search communities…"
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-6 items-start">
         {/* Left Column */}
         <div className="space-y-6">
@@ -921,13 +965,37 @@ export default function Dashboard() {
           <Section
             title="At a Glance"
             headerRight={
-              <button
-                type="button"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-white transition-opacity hover:opacity-90 font-source-sans-3 bg-[var(--primary)]"
+              <Link
+                to="/residents/all?add=1"
+                className="flex items-center justify-center transition-opacity hover:opacity-90 font-source-sans-3"
+                style={{
+                  width: 200,
+                  height: 48,
+                  minWidth: 48,
+                  opacity: 1,
+                  borderRadius: 9999,
+                  gap: 8,
+                  paddingTop: 10,
+                  paddingRight: 24,
+                  paddingBottom: 10,
+                  paddingLeft: 20,
+                  backgroundColor: '#307584',
+                  fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+                  fontWeight: 500,
+                  fontSize: 16,
+                  lineHeight: '22px',
+                  letterSpacing: '0%',
+                  color: '#FFFFFF',
+                }}
               >
-                <Plus size={16} />
-                Add Resident
-              </button>
+                <span
+                  className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-white"
+                  aria-hidden
+                >
+                  <Plus size={11} strokeWidth={3} style={{ color: '#307584' }} />
+                </span>
+                <span className="whitespace-nowrap">Add Resident</span>
+              </Link>
             }
           >
             <div className="grid grid-cols-3 gap-3">

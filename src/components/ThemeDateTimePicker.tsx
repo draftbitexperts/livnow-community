@@ -51,6 +51,15 @@ function formatDisplay(d: Date): string {
   }).format(d);
 }
 
+/** US-style date for date-only fields (matches mm/dd/yyyy copy). */
+function formatDisplayDateOnly(d: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  }).format(d);
+}
+
 function formatTimeOnly(d: Date): string {
   return new Intl.DateTimeFormat('tr-TR', {
     hour: '2-digit',
@@ -97,6 +106,10 @@ export type ThemeDateTimePickerProps = {
   error?: string;
   /** When false, "Clear" is hidden (e.g. required start field). */
   allowClear?: boolean;
+  /**
+   * Calendar only (no time tab). Value remains `YYYY-MM-DDTHH:mm` — use `T00:00` for storage.
+   */
+  dateOnly?: boolean;
 };
 
 export function ThemeDateTimePicker({
@@ -108,6 +121,7 @@ export function ThemeDateTimePicker({
   emptyLabel,
   error,
   allowClear = true,
+  dateOnly = false,
 }: ThemeDateTimePickerProps) {
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(() => new Date().getFullYear());
@@ -204,10 +218,10 @@ export function ThemeDateTimePicker({
   }, [open]);
 
   useLayoutEffect(() => {
-    if (!open || panelTab !== 'time') return;
+    if (!open || dateOnly || panelTab !== 'time') return;
     hourBtnRefs.current[selH]?.scrollIntoView({ block: 'nearest' });
     minuteBtnRefs.current[selMin]?.scrollIntoView({ block: 'nearest' });
-  }, [open, panelTab, selH, selMin]);
+  }, [open, panelTab, selH, selMin, dateOnly]);
 
   useEffect(() => {
     if (open) setPanelTab('date');
@@ -267,41 +281,52 @@ export function ThemeDateTimePicker({
       style={popoverStyle}
     >
       <div className="flex flex-col px-2 sm:px-3">
-        <div className="mb-2 flex gap-1 rounded-lg bg-gray-100 p-1" role="tablist" aria-label="Date or time">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={panelTab === 'date'}
-            id={`${id}-tab-date`}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors ${
-              panelTab === 'date'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setPanelTab('date')}
+        {!dateOnly && (
+          <div
+            className="mb-2 flex gap-1 rounded-lg border border-gray-200 bg-white p-1"
+            role="tablist"
+            aria-label="Date or time"
           >
-            <Calendar size={16} strokeWidth={2} className="shrink-0 opacity-80" aria-hidden />
-            Date
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={panelTab === 'time'}
-            id={`${id}-tab-time`}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors ${
-              panelTab === 'time'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-            onClick={() => setPanelTab('time')}
-          >
-            <Clock size={16} strokeWidth={2} className="shrink-0 opacity-80" aria-hidden />
-            Time
-          </button>
-        </div>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={panelTab === 'date'}
+              id={`${id}-tab-date`}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors ${
+                panelTab === 'date'
+                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              }`}
+              onClick={() => setPanelTab('date')}
+            >
+              <Calendar size={16} strokeWidth={2} className="shrink-0 opacity-80" aria-hidden />
+              Date
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={panelTab === 'time'}
+              id={`${id}-tab-time`}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold transition-colors ${
+                panelTab === 'time'
+                  ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                  : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              }`}
+              onClick={() => setPanelTab('time')}
+            >
+              <Clock size={16} strokeWidth={2} className="shrink-0 opacity-80" aria-hidden />
+              Time
+            </button>
+          </div>
+        )}
 
-        {panelTab === 'date' ? (
-          <div className="min-w-0" role="tabpanel" aria-labelledby={`${id}-tab-date`}>
+        {dateOnly || panelTab === 'date' ? (
+          <div
+            className="min-w-0"
+            role="tabpanel"
+            aria-label={dateOnly ? label : undefined}
+            aria-labelledby={dateOnly ? undefined : `${id}-tab-date`}
+          >
             <div className="mb-1.5 flex items-center justify-between gap-2 sm:mb-2">
               <button
                 type="button"
@@ -371,8 +396,11 @@ export function ThemeDateTimePicker({
                           : 'text-gray-800 hover:bg-gray-100'
                     }`}
                     onClick={() => {
-                      const next = new Date(y, m, d, selH, selMin, 0, 0);
+                      const next = dateOnly
+                        ? new Date(y, m, d, 0, 0, 0, 0)
+                        : new Date(y, m, d, selH, selMin, 0, 0);
                       commit(next);
+                      if (dateOnly) setOpen(false);
                     }}
                   >
                     {d}
@@ -400,14 +428,19 @@ export function ThemeDateTimePicker({
                 className="text-sm font-semibold text-[var(--primary)] hover:underline"
                 onClick={() => {
                   const n = new Date();
-                  commit(n);
+                  commit(
+                    dateOnly
+                      ? new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0, 0)
+                      : n,
+                  );
+                  if (dateOnly) setOpen(false);
                 }}
               >
                 Today
               </button>
             </div>
           </div>
-        ) : (
+        ) : !dateOnly ? (
           <div className="min-w-0" role="tabpanel" aria-labelledby={`${id}-tab-time`}>
             <div className="mb-3 flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
               <span className="text-lg font-bold tabular-nums text-gray-900">
@@ -438,7 +471,7 @@ export function ThemeDateTimePicker({
               <span className="text-center text-[10px] font-semibold text-gray-500">Hour</span>
               <span className="min-w-2" aria-hidden />
               <span className="text-center text-[10px] font-semibold text-gray-500">Min</span>
-              <div className="max-h-[min(11rem,38dvh)] min-h-0 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/80 py-1">
+              <div className="max-h-[min(11rem,38dvh)] min-h-0 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1">
                 {HOURS.map((h) => {
                   const isSel = selected && selH === h;
                   return (
@@ -449,7 +482,7 @@ export function ThemeDateTimePicker({
                       }}
                       type="button"
                       className={`flex w-full items-center justify-center py-1.5 text-sm font-medium transition-colors ${
-                        isSel ? 'bg-[var(--primary)] text-white' : 'text-gray-800 hover:bg-white'
+                        isSel ? 'bg-[var(--primary)] text-white' : 'text-gray-800 hover:bg-gray-50'
                       }`}
                       onClick={() => {
                         const base = anchorDate(selected, viewYear, viewMonth);
@@ -473,7 +506,7 @@ export function ThemeDateTimePicker({
               <div className="flex min-h-0 items-center justify-center text-lg font-bold leading-none text-gray-400">
                 :
               </div>
-              <div className="max-h-[min(11rem,38dvh)] min-h-0 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50/80 py-1">
+              <div className="max-h-[min(11rem,38dvh)] min-h-0 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1">
                 {MINUTES.map((min) => {
                   const isSel = selected && selMin === min;
                   return (
@@ -484,7 +517,7 @@ export function ThemeDateTimePicker({
                       }}
                       type="button"
                       className={`flex w-full items-center justify-center py-1 text-sm font-medium transition-colors ${
-                        isSel ? 'bg-[var(--primary)] text-white' : 'text-gray-800 hover:bg-white'
+                        isSel ? 'bg-[var(--primary)] text-white' : 'text-gray-800 hover:bg-gray-50'
                       }`}
                       onClick={() => {
                         const base = anchorDate(selected, viewYear, viewMonth);
@@ -507,7 +540,7 @@ export function ThemeDateTimePicker({
               </div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   ) : null;
@@ -526,16 +559,18 @@ export function ThemeDateTimePicker({
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${id}-error` : undefined}
         onClick={() => setOpen((o) => !o)}
-        className={`flex w-full min-h-[3.25rem] items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-[box-shadow,transform] active:scale-[0.99] ${
-          error
-            ? 'border-red-500 bg-red-50/30'
-            : 'border-gray-200 bg-gray-50/90 hover:border-[var(--primary)]/35 hover:bg-gray-50'
+        className={`flex w-full min-h-[3.25rem] items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm transition-[box-shadow,transform] active:scale-[0.99] ${
+          error ? 'border-red-500' : 'hover:border-[var(--primary)]/35'
         } ${open && !error ? 'border-[var(--primary)] ring-2 ring-[var(--primary)]/25' : ''}`}
       >
         <span className={showPlaceholder ? 'text-gray-400' : 'font-medium text-gray-900'}>
-          {selected ? formatDisplay(selected) : emptyLabel ?? 'Select date and time'}
+          {selected
+            ? dateOnly
+              ? formatDisplayDateOnly(selected)
+              : formatDisplay(selected)
+            : emptyLabel ?? (dateOnly ? 'Select a date' : 'Select date and time')}
         </span>
-        {open && panelTab === 'time' ? (
+        {!dateOnly && open && panelTab === 'time' ? (
           <Clock className="h-[22px] w-[22px] shrink-0 text-[var(--primary)]" strokeWidth={2} aria-hidden />
         ) : (
           <img src={calendarIcon} alt="" width={22} height={22} className="h-[22px] w-[22px] shrink-0 object-contain" />

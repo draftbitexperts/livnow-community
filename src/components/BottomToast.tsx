@@ -4,7 +4,8 @@ import { AlertCircle, Check } from 'lucide-react';
 
 export type BottomToastVariant = 'success' | 'error';
 
-const SUCCESS_BG = '#669977';
+/** Design spec: muted green success pill */
+const SUCCESS_BG = '#6B9E7C';
 const ERROR_BG = '#C75450';
 
 export type BottomToastPayload = {
@@ -30,7 +31,8 @@ export function BottomToast({
 
   return createPortal(
     <div
-      className="pointer-events-none fixed bottom-6 left-1/2 z-[320] flex w-[min(100vw-2rem,28rem)] -translate-x-1/2 justify-center px-4"
+      className="pointer-events-none fixed left-1/2 z-[320] flex w-[min(100vw-2rem,28rem)] -translate-x-1/2 justify-center px-4"
+      style={{ bottom: 'calc(50px + env(safe-area-inset-bottom, 0px))' }}
       role="status"
       aria-live="polite"
     >

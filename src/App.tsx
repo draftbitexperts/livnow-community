@@ -2,9 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import LoginPage from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+import AllResidents from '@/pages/AllResidents';
+import ResidentDetail from '@/pages/ResidentDetail';
 import ComingSoon from '@/pages/ComingSoon';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppLayout from '@/components/AppLayout';
+import { DemoResidentsProvider } from '@/contexts/DemoResidentsContext';
 
 function LoginRoute() {
   const { user, loading } = useAuth();
@@ -27,6 +30,7 @@ function LoginRoute() {
 function App() {
   return (
     <BrowserRouter>
+      <DemoResidentsProvider>
       <Routes>
         <Route path="/" element={<LoginRoute />} />
         <Route
@@ -38,13 +42,14 @@ function App() {
         >
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="profile" element={<ComingSoon />} />
-          <Route path="residents/all" element={<ComingSoon />} />
-          <Route path="residents/:residentId" element={<ComingSoon />} />
+          <Route path="residents/all" element={<AllResidents />} />
+          <Route path="residents/:residentId" element={<ResidentDetail />} />
           <Route path="communities" element={<ComingSoon />} />
           <Route path="knowledge-base" element={<ComingSoon />} />
           <Route path="team" element={<ComingSoon />} />
         </Route>
       </Routes>
+      </DemoResidentsProvider>
     </BrowserRouter>
   );
 }
