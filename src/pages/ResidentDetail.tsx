@@ -1,31 +1,60 @@
-import { useMemo, useState, useRef, useEffect, type CSSProperties, type RefObject } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import {
-  User,
-  Settings,
-  Users,
+  useCallback,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  type CSSProperties,
+  type RefObject,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import type { LucideIcon } from 'lucide-react';
+import {
   Pencil,
   ChevronLeft,
   ChevronRight,
   ArrowDown,
   Check,
-  Plus,
-  StickyNote,
-  Paperclip,
   ArrowLeft,
-  Building2,
   MessageCircle,
 } from 'lucide-react';
+import supplyPartnerIconRealEstate from '../../LivNow Icons/Button Tab/Image.png';
+import supplyPartnerIconOrganizer from '../../LivNow Icons/Button Tab/Image-1.png';
+import supplyPartnerIconMover from '../../LivNow Icons/Button Tab/Image-2.png';
+import supplyPartnerIconBridgeLoan from '../../LivNow Icons/Button Tab/Image-3.png';
+import supplyPartnerIconMarketReady from '../../LivNow Icons/Button Tab/Image-5.png';
+import tabIconProfile from '../../LivNow Icons/Resident Detail Tab/profile.png';
+import tabIconProfileWhite from '../../LivNow Icons/Resident Detail Tab/profile white.png';
+import tabIconLikeShapes from '../../LivNow Icons/Resident Detail Tab/like-shapes.png';
+import tabIconLikeShapesWhite from '../../LivNow Icons/Resident Detail Tab/like-shapes white.png';
+import tabIconProfile2User from '../../LivNow Icons/Resident Detail Tab/profile-2user.png';
+import tabIconProfile2UserWhite from '../../LivNow Icons/Resident Detail Tab/profile-2user white.png';
 import {
   findDemoResidentInList,
   residentDisplayName,
-  toResidentSlug,
+  isDemoContactEmpty,
   type DemoResidentRecord,
+  type DemoResidentContact,
 } from '@/lib/demoResidents';
 import { useDemoResidents } from '@/contexts/DemoResidentsContext';
 import { formatDateToAmerican } from '@/lib/dateUtils';
 import { toSentenceCase } from '@/lib/textUtils';
 import ResidentChatterDrawer from '@/components/ResidentChatterDrawer';
+import ResidentFormSlidePanel from '@/components/ResidentFormSlidePanel';
+import { BottomToast, type BottomToastPayload } from '@/components/BottomToast';
+import RealEstateMilestonesPanel, {
+  type RealEstateMilestoneScenario,
+} from '@/components/RealEstateMilestonesPanel';
+import GenericServiceMilestonesPanel, {
+  type GenericMilestoneScenario,
+} from '@/components/GenericServiceMilestonesPanel';
+import MilestoneStatusPopover from '@/components/MilestoneStatusPopover';
+import { formatShortMonthDay, type MilestoneWorkflowStatus } from '@/lib/milestoneWorkflow';
+import { formSelectOverrides } from '@/lib/formStyles';
+import { SearchableFormSelect, type SearchableFormSelectOption } from '@/components/SearchableFormSelect';
 
 type TabType = 'resident' | 'supply-partners' | 'resident-contacts';
 
@@ -35,8 +64,11 @@ interface DummyTask {
   id: string;
   description: string;
   status: TaskStatus;
-  ownerInitials: string;
-  dueDisplay: string;
+  /** Supply-partner task rows */
+  ownerInitials?: string;
+  /** Resident task rows: two avatars; `null` = inactive (show "--") */
+  ownerPair?: [string, string] | null;
+  dueDisplay?: string | null;
   hasNote?: boolean;
   hasAttachment?: boolean;
 }
@@ -46,6 +78,11 @@ interface DummyService {
   name: string;
   status: 'complete' | 'in-progress' | 'closed' | 'opted-out';
   progress?: number;
+  iconSrc: string;
+  /** Demo only: Real Estate (s1) milestone mock */
+  realEstateMilestoneScenario?: RealEstateMilestoneScenario;
+  /** Demo only: non–Real Estate services — 3-step Referred / Active / Complete */
+  genericMilestoneScenario?: GenericMilestoneScenario;
 }
 
 const MONTH_NAMES = [
@@ -192,6 +229,219 @@ const primaryContactNotesStyle: CSSProperties = {
   color: '#505051',
 };
 
+const RESIDENT_CONTACTS_SECTION_BG = 'hsla(193, 27%, 94%, 1)';
+const RESIDENT_CONTACTS_ADDITIONAL_BG = 'hsla(0, 0%, 95%, 1)';
+
+const PRIMARY_CONTACT_RELATIONSHIP_OPTIONS: SearchableFormSelectOption[] = [
+  { value: 'Son', label: 'Son' },
+  { value: 'Daughter', label: 'Daughter' },
+  { value: 'Spouse', label: 'Spouse' },
+  { value: 'Sibling', label: 'Sibling' },
+  { value: 'Son in law', label: 'Son in law' },
+  { value: 'Other', label: 'Other' },
+];
+
+const primaryContactFormLabelStyle: CSSProperties = {
+  fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+  fontWeight: 600,
+  fontSize: 18,
+  lineHeight: '20px',
+  color: '#323234',
+};
+
+const primaryContactFormInputStyle: CSSProperties = {
+  width: '100%',
+  maxWidth: '100%',
+  height: 48,
+  borderRadius: 8,
+  border: '1px solid #d1d5db',
+  padding: 16,
+  backgroundColor: '#FFFFFF',
+  fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+  fontWeight: 500,
+  fontSize: 18,
+  lineHeight: '20px',
+  color: '#323234',
+};
+
+const primaryContactFormSelectStyle: CSSProperties = {
+  ...primaryContactFormInputStyle,
+  ...formSelectOverrides,
+  backgroundColor: '#FFFFFF',
+};
+
+function isValidEmailSimple(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+type ResidentInlineContactDraft = {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  relationship: string;
+  notes: string;
+};
+
+function emptyResidentContactDraft(): ResidentInlineContactDraft {
+  return { firstName: '', lastName: '', phone: '', email: '', relationship: '', notes: '' };
+}
+
+/** Notes optional; all other contact fields required with valid email. */
+function isResidentContactDraftComplete(d: ResidentInlineContactDraft): boolean {
+  const fn = d.firstName.trim();
+  const ln = d.lastName.trim();
+  const ph = d.phone.trim();
+  const em = d.email.trim();
+  const rel = d.relationship.trim();
+  if (!fn || !ln || !ph || !rel) return false;
+  if (!isValidEmailSimple(em)) return false;
+  return true;
+}
+
+function ContactFieldRequiredMark() {
+  return (
+    <span className="text-red-500" aria-hidden>
+      {' '}
+      *
+    </span>
+  );
+}
+
+function draftFromDemoContact(c: DemoResidentContact | null | undefined): ResidentInlineContactDraft {
+  const p = c ?? null;
+  return {
+    firstName: (p?.first_name ?? '').trim(),
+    lastName: (p?.last_name ?? '').trim(),
+    phone: (p?.phone ?? '').trim(),
+    email: (p?.email ?? '').trim(),
+    relationship: (p?.relationship ?? '').trim(),
+    notes: (p?.notes ?? '').trim(),
+  };
+}
+
+function ResidentContactInlineFormFields({
+  idPrefix,
+  draft,
+  setDraft,
+  disabled,
+}: {
+  idPrefix: string;
+  draft: ResidentInlineContactDraft;
+  setDraft: Dispatch<SetStateAction<ResidentInlineContactDraft>>;
+  disabled: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div>
+        <label className="mb-2 block font-source-sans-3" style={primaryContactFormLabelStyle} htmlFor={`${idPrefix}-first`}>
+          First Name
+          <ContactFieldRequiredMark />
+        </label>
+        <input
+          id={`${idPrefix}-first`}
+          type="text"
+          placeholder="Input Name"
+          value={draft.firstName}
+          onChange={(e) => setDraft((d) => ({ ...d, firstName: e.target.value }))}
+          className="w-full font-source-sans-3 placeholder:text-[#ACACAD] focus:outline-none focus:ring-2 focus:ring-teal-500"
+          style={primaryContactFormInputStyle}
+          disabled={disabled}
+          required
+          aria-required
+        />
+      </div>
+      <div>
+        <label className="mb-2 block font-source-sans-3" style={primaryContactFormLabelStyle} htmlFor={`${idPrefix}-last`}>
+          Last Name
+          <ContactFieldRequiredMark />
+        </label>
+        <input
+          id={`${idPrefix}-last`}
+          type="text"
+          placeholder="Input Name"
+          value={draft.lastName}
+          onChange={(e) => setDraft((d) => ({ ...d, lastName: e.target.value }))}
+          className="w-full font-source-sans-3 placeholder:text-[#ACACAD] focus:outline-none focus:ring-2 focus:ring-teal-500"
+          style={primaryContactFormInputStyle}
+          disabled={disabled}
+          required
+          aria-required
+        />
+      </div>
+      <div>
+        <label className="mb-2 block font-source-sans-3" style={primaryContactFormLabelStyle} htmlFor={`${idPrefix}-phone`}>
+          Phone Number
+          <ContactFieldRequiredMark />
+        </label>
+        <input
+          id={`${idPrefix}-phone`}
+          type="tel"
+          placeholder="Input Number"
+          value={draft.phone}
+          onChange={(e) => setDraft((d) => ({ ...d, phone: e.target.value }))}
+          className="w-full font-source-sans-3 placeholder:text-[#ACACAD] focus:outline-none focus:ring-2 focus:ring-teal-500"
+          style={primaryContactFormInputStyle}
+          disabled={disabled}
+          required
+          aria-required
+        />
+      </div>
+      <div>
+        <label className="mb-2 block font-source-sans-3" style={primaryContactFormLabelStyle} htmlFor={`${idPrefix}-email`}>
+          Email
+          <ContactFieldRequiredMark />
+        </label>
+        <input
+          id={`${idPrefix}-email`}
+          type="email"
+          placeholder="Input Email"
+          value={draft.email}
+          onChange={(e) => setDraft((d) => ({ ...d, email: e.target.value }))}
+          className="w-full font-source-sans-3 placeholder:text-[#ACACAD] focus:outline-none focus:ring-2 focus:ring-teal-500"
+          style={primaryContactFormInputStyle}
+          disabled={disabled}
+          required
+          aria-required
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className="mb-2 block font-source-sans-3" style={primaryContactFormLabelStyle} htmlFor={`${idPrefix}-rel`}>
+          Relationship
+          <ContactFieldRequiredMark />
+        </label>
+        <SearchableFormSelect
+          id={`${idPrefix}-rel`}
+          value={draft.relationship}
+          onChange={(v) => setDraft((d) => ({ ...d, relationship: v }))}
+          options={PRIMARY_CONTACT_RELATIONSHIP_OPTIONS}
+          placeholder="Select Relationship"
+          disabled={disabled}
+          emptyMessage="No relationships match."
+          style={primaryContactFormSelectStyle}
+          wrapperClassName="relative w-full max-w-full"
+        />
+      </div>
+      <div className="md:col-span-2">
+        <label className="mb-2 block font-source-sans-3" style={primaryContactFormLabelStyle} htmlFor={`${idPrefix}-notes`}>
+          Notes{' '}
+          <span className="text-base font-normal text-gray-500">(optional)</span>
+        </label>
+        <textarea
+          id={`${idPrefix}-notes`}
+          placeholder="Notes about this contact"
+          value={draft.notes}
+          onChange={(e) => setDraft((d) => ({ ...d, notes: e.target.value }))}
+          rows={4}
+          className="w-full resize-y font-source-sans-3 placeholder:text-[#ACACAD] focus:outline-none focus:ring-2 focus:ring-teal-500"
+          style={{ ...primaryContactFormInputStyle, height: 'auto', minHeight: 120 }}
+          disabled={disabled}
+        />
+      </div>
+    </div>
+  );
+}
+
 const communityUpdatesContentStyle: CSSProperties = {
   paddingTop: 60,
   paddingRight: 24,
@@ -199,14 +449,22 @@ const communityUpdatesContentStyle: CSSProperties = {
   paddingLeft: 24,
 };
 
+const TASK_PRIMARY_TEAL = 'hsla(191, 47%, 35%, 1)';
+const taskListBorderColor = '#E3E3E4';
+
+/** Status | task (flex) | fixed Owner | fixed Due — long names truncate in column 2 only */
+const RESIDENT_TASKS_GRID_COLUMNS = '2.25rem minmax(0, 1fr) 6.5rem 4.75rem';
+
 const residentTasksContainerStyle: CSSProperties = {
   opacity: 1,
   backgroundColor: '#FFFFFF',
   borderRadius: 16,
-  gap: 21,
-  paddingTop: 60,
+  border: `1px solid ${taskListBorderColor}`,
+  boxShadow: 'none',
+  gap: 0,
+  paddingTop: 24,
   paddingRight: 24,
-  paddingBottom: 42,
+  paddingBottom: 24,
   paddingLeft: 24,
   display: 'flex',
   flexDirection: 'column',
@@ -226,7 +484,6 @@ const residentChatterCardStyle: CSSProperties = {
   flexDirection: 'column',
   width: '100%',
   minWidth: 0,
-  boxShadow: 'var(--resident-card-shadow)',
 };
 
 const residentTasksColumnHeaderStyle: CSSProperties = {
@@ -237,6 +494,24 @@ const residentTasksColumnHeaderStyle: CSSProperties = {
   letterSpacing: '0%',
   textAlign: 'left',
   color: '#505051',
+};
+
+const residentTasksColumnHeaderRightStyle: CSSProperties = {
+  ...residentTasksColumnHeaderStyle,
+  textAlign: 'right',
+};
+
+const residentTasksDueInactiveStyle: CSSProperties = {
+  fontFamily: 'var(--font-source-sans-3), sans-serif',
+  fontWeight: 500,
+  fontSize: '16px',
+  lineHeight: '20px',
+  color: '#A3A3A3',
+};
+
+const residentTasksDueActiveStyle: CSSProperties = {
+  ...residentTasksDueInactiveStyle,
+  color: TASK_PRIMARY_TEAL,
 };
 
 const residentTasksRowTextStyle: CSSProperties = {
@@ -277,13 +552,15 @@ const communityUpdatesSentTextStyle: CSSProperties = {
   color: '#307584',
 };
 
-const paginationNavStyle: CSSProperties = {
+const communityUpdatesNavEnabledColor = 'hsla(191, 47%, 35%, 1)';
+const communityUpdatesNavDisabledColor = 'hsla(240, 1%, 68%, 1)';
+
+const communityUpdatesNavButtonBaseStyle: CSSProperties = {
   fontFamily: 'var(--font-source-sans-3), sans-serif',
   fontWeight: 600,
   fontSize: '16px',
   lineHeight: '22px',
   letterSpacing: '0%',
-  color: '#ACACAD',
 };
 
 const supplyPartnersSectionLabelStyle: CSSProperties = {
@@ -333,34 +610,77 @@ const supplyPartnerCloseButtonStyle: CSSProperties = {
   color: '#307584',
 };
 
-const taskListBorderColor = '#E3E3E4';
-
 function getTaskStatusIcon(status: TaskStatus) {
   switch (status) {
     case 'completed':
       return (
         <div
           className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full"
-          style={{ backgroundColor: '#307584' }}
+          style={{ backgroundColor: TASK_PRIMARY_TEAL }}
         >
-          <Check size={12} className="text-white" />
+          <Check size={12} className="text-white" strokeWidth={2.5} />
         </div>
       );
     case 'in-progress':
       return (
         <div
-          className="h-5 w-5 flex-shrink-0 rounded-full"
+          className="box-border h-5 w-5 flex-shrink-0 rounded-full"
           style={{
-            border: '1px solid #307584',
-            background: 'linear-gradient(to right, #FFFFFF 50%, #307584 50%)',
+            border: `1px solid ${TASK_PRIMARY_TEAL}`,
+            background: `linear-gradient(to right, #FFFFFF 50%, ${TASK_PRIMARY_TEAL} 50%)`,
           }}
         />
       );
     case 'disabled':
       return <div className="h-5 w-5 flex-shrink-0 rounded-full border border-gray-400 bg-gray-300" />;
     default:
-      return <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-gray-300" />;
+      return (
+        <div
+          className="box-border h-5 w-5 flex-shrink-0 rounded-full bg-white"
+          style={{ border: `1.5px solid ${TASK_PRIMARY_TEAL}` }}
+        />
+      );
   }
+}
+
+function ResidentTaskOwnerPair({ pair }: { pair: [string, string] | null }) {
+  if (!pair) {
+    return (
+      <div className="flex w-full items-center justify-end">
+        <span className="font-source-sans-3 tabular-nums" style={residentTasksDueInactiveStyle}>
+          --
+        </span>
+      </div>
+    );
+  }
+  const avatar: CSSProperties = {
+    width: 24,
+    height: 24,
+    borderRadius: 100,
+    backgroundColor: TASK_PRIMARY_TEAL,
+    border: '1.5px solid #FFFFFF',
+    boxSizing: 'border-box',
+    fontSize: 10,
+    fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+    fontWeight: 600,
+    color: '#FFFFFF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  };
+  return (
+    <div className="flex w-full items-center justify-end">
+      <div className="flex shrink-0 items-center">
+        <div className="relative z-[2]" style={avatar}>
+          {pair[0]}
+        </div>
+        <div className="relative z-[1] -ml-2.5" style={avatar}>
+          {pair[1]}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getServiceStatusBadge(service: DummyService) {
@@ -404,40 +724,111 @@ function getServiceStatusBadge(service: DummyService) {
 const DUMMY_TASKS: DummyTask[] = [
   {
     id: 't1',
-    description: 'Welcome packet sent',
+    description: 'Needs assessment completed',
     status: 'completed',
-    ownerInitials: 'JD',
-    dueDisplay: '12/02/2025',
-    hasNote: false,
-    hasAttachment: true,
+    ownerPair: ['KF', 'MS'],
+    dueDisplay: '12/4',
   },
   {
     id: 't2',
-    description: 'Tour follow-up call',
-    status: 'in-progress',
-    ownerInitials: 'JD',
-    dueDisplay: '12/10/2025',
-    hasNote: true,
-    hasAttachment: false,
+    description: 'Real estate agent email sent to customer',
+    status: 'completed',
+    ownerPair: ['KF', 'MS'],
+    dueDisplay: '12/5',
   },
   {
     id: 't3',
-    description: 'Insurance paperwork',
+    description: 'Mover email sent to customer',
+    status: 'in-progress',
+    ownerPair: ['KF', 'MS'],
+    dueDisplay: '12/6',
+  },
+  {
+    id: 't4',
+    description: 'Professional organizer email sent to customer',
+    status: 'in-progress',
+    ownerPair: ['KF', 'MS'],
+    dueDisplay: '12/8',
+  },
+  {
+    id: 't5',
+    description: 'Timeline sent',
     status: 'pending',
-    ownerInitials: 'AM',
-    dueDisplay: '12/18/2025',
+    ownerPair: ['KF', 'MS'],
+    dueDisplay: '12/10',
+  },
+  {
+    id: 't6',
+    description: 'Confirm move in date with community',
+    status: 'pending',
+    ownerPair: ['KF', 'MS'],
+    dueDisplay: '12/12',
+  },
+  {
+    id: 't7',
+    description: 'Move in week email sent to customer',
+    status: 'pending',
+    ownerPair: null,
+    dueDisplay: null,
+  },
+  {
+    id: 't8',
+    description: 'Customer survey sent',
+    status: 'pending',
+    ownerPair: null,
+    dueDisplay: null,
+  },
+  {
+    id: 't9',
+    description: 'File audit for documents and services completed',
+    status: 'pending',
+    ownerPair: null,
+    dueDisplay: null,
+  },
+  {
+    id: 't10',
+    description: 'Complete File',
+    status: 'pending',
+    ownerPair: null,
+    dueDisplay: null,
   },
 ];
 
 const DUMMY_SERVICES_AVAILABLE: DummyService[] = [
-  { id: 's1', name: 'Real Estate', status: 'in-progress', progress: 40 },
-  { id: 's2', name: 'Mover', status: 'complete' },
-  { id: 's3', name: 'Professional Organizer', status: 'in-progress', progress: 10 },
-  { id: 's4', name: 'Market Ready', status: 'closed' },
+  {
+    id: 's1',
+    name: 'Real Estate',
+    status: 'in-progress',
+    progress: 40,
+    iconSrc: supplyPartnerIconRealEstate,
+    realEstateMilestoneScenario: 'standard',
+  },
+  {
+    id: 's2',
+    name: 'Mover',
+    status: 'complete',
+    iconSrc: supplyPartnerIconMover,
+    genericMilestoneScenario: 'two_complete_one_pending',
+  },
+  {
+    id: 's3',
+    name: 'Professional Organizer',
+    status: 'in-progress',
+    progress: 10,
+    iconSrc: supplyPartnerIconOrganizer,
+    genericMilestoneScenario: 'referred_complete_others_pending',
+  },
+  {
+    id: 's4',
+    name: 'Market Ready',
+    status: 'closed',
+    iconSrc: supplyPartnerIconMarketReady,
+    genericMilestoneScenario: 'declined_referred',
+  },
 ];
 
 const DUMMY_SERVICES_OPTOUT: DummyService[] = [
-  { id: 'o1', name: 'Bridge Loan', status: 'opted-out' },
+  { id: 'o1', name: 'Bridge Loan', status: 'opted-out', iconSrc: supplyPartnerIconBridgeLoan },
 ];
 
 interface ProfileCardProps {
@@ -623,13 +1014,18 @@ function TabButton({
   active,
   onClick,
   icon: Icon,
+  iconSrc,
+  iconSrcActive,
   label,
 }: {
   active: boolean;
   onClick: () => void;
-  icon: typeof User;
+  icon?: LucideIcon;
+  iconSrc?: string;
+  iconSrcActive?: string;
   label: string;
 }) {
+  const useImage = Boolean(iconSrc);
   return (
     <button
       type="button"
@@ -654,7 +1050,7 @@ function TabButton({
               paddingLeft: 24,
               paddingRight: 24,
               borderRadius: 9999,
-              backgroundColor: '#FFFFFF',
+              backgroundColor: 'hsla(193, 27%, 94%, 1)',
               border: '1px solid #83ACB5',
               fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
               fontWeight: 500,
@@ -664,7 +1060,18 @@ function TabButton({
             }
       }
     >
-      <Icon size={18} style={{ color: active ? '#FFFFFF' : '#307584', flexShrink: 0 }} />
+      {useImage ? (
+        <img
+          src={active && iconSrcActive ? iconSrcActive : (iconSrc as string)}
+          alt=""
+          width={18}
+          height={18}
+          className="shrink-0 object-contain"
+          draggable={false}
+        />
+      ) : Icon ? (
+        <Icon size={18} style={{ color: active ? '#FFFFFF' : '#307584', flexShrink: 0 }} />
+      ) : null}
       {label}
     </button>
   );
@@ -675,30 +1082,297 @@ export default function ResidentDetail() {
   const navigate = useNavigate();
   const { records, setRecords } = useDemoResidents();
   const [activeTab, setActiveTab] = useState<TabType>('resident');
-  const [selectedMonth, setSelectedMonth] = useState(11);
-  const [selectedYear, setSelectedYear] = useState(2025);
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [selectedSupplyService, setSelectedSupplyService] = useState<DummyService | null>(null);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   /** Demo: red dot on Open Chat until user taps (real app: unread from provider). */
   const [residentChatterUnread, setResidentChatterUnread] = useState(true);
   const [chatterDrawerOpen, setChatterDrawerOpen] = useState(false);
+  const [residentEditPanelOpen, setResidentEditPanelOpen] = useState(false);
+  const [residentEditToast, setResidentEditToast] = useState<BottomToastPayload | null>(null);
+  const [milestoneStatusByKey, setMilestoneStatusByKey] = useState<Record<string, MilestoneWorkflowStatus>>({});
+  const [milestonePopover, setMilestonePopover] = useState<{
+    serviceId: string;
+    rowId: string;
+    title: string;
+    anchorRect: DOMRect;
+    currentWorkflow: MilestoneWorkflowStatus;
+  } | null>(null);
+  const [primaryContactInlineEditing, setPrimaryContactInlineEditing] = useState(false);
+  const [primaryContactSaving, setPrimaryContactSaving] = useState(false);
+  const [primaryContactDraft, setPrimaryContactDraft] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    email: '',
+    relationship: '',
+    notes: '',
+  });
+  const [primaryContactFormError, setPrimaryContactFormError] = useState<string | null>(null);
+  const [secondaryInlineEditing, setSecondaryInlineEditing] = useState(false);
+  const [secondaryDraft, setSecondaryDraft] = useState<ResidentInlineContactDraft>(() => emptyResidentContactDraft());
+  const [secondarySaving, setSecondarySaving] = useState(false);
+  const [secondaryFormError, setSecondaryFormError] = useState<string | null>(null);
+  const [additionalEditingId, setAdditionalEditingId] = useState<string | null>(null);
+  const [additionalDraft, setAdditionalDraft] = useState<ResidentInlineContactDraft>(() => emptyResidentContactDraft());
+  const [additionalSaving, setAdditionalSaving] = useState(false);
+  const [additionalFormError, setAdditionalFormError] = useState<string | null>(null);
   const statusRef = useRef<HTMLDivElement>(null);
+
+  const milestoneTodayShort = useMemo(() => formatShortMonthDay(new Date()), []);
+
+  const handleMilestonePopoverOpen = useCallback(
+    (p: {
+      serviceId: string;
+      rowId: string;
+      title: string;
+      anchorRect: DOMRect;
+      currentWorkflow: MilestoneWorkflowStatus;
+    }) => {
+      setMilestonePopover(p);
+    },
+    [],
+  );
 
   const resident = useMemo(
     () => (residentId ? findDemoResidentInList(records, residentId) : null),
     [records, residentId],
   );
 
-  const slugForEdit = resident
-    ? toResidentSlug(resident.first_name, resident.last_name) || resident.id
-    : '';
-
   const openEditResident = () => {
     if (!resident) return;
-    navigate('/residents/all', {
-      state: { editResidentId: resident.id, returnToResidentSlug: slugForEdit },
-    });
+    setResidentEditPanelOpen(true);
   };
+
+  const openPrimaryContactInlineEdit = useCallback(() => {
+    if (!resident) return;
+    const pc = resident.primary_contact;
+    setPrimaryContactDraft({
+      firstName: (pc?.first_name ?? '').trim(),
+      lastName: (pc?.last_name ?? '').trim(),
+      phone: (pc?.phone ?? '').trim(),
+      email: (pc?.email ?? '').trim(),
+      relationship: (pc?.relationship ?? '').trim(),
+      notes: (pc?.notes ?? '').trim(),
+    });
+    setPrimaryContactFormError(null);
+    setPrimaryContactInlineEditing(true);
+  }, [resident]);
+
+  useEffect(() => {
+    if (activeTab !== 'resident-contacts') {
+      setPrimaryContactInlineEditing(false);
+      setPrimaryContactFormError(null);
+      setSecondaryInlineEditing(false);
+      setSecondaryFormError(null);
+      setAdditionalEditingId(null);
+      setAdditionalFormError(null);
+    }
+  }, [activeTab]);
+
+  useLayoutEffect(() => {
+    if (activeTab !== 'resident-contacts' || !resident) return;
+    if (isDemoContactEmpty(resident.primary_contact)) {
+      openPrimaryContactInlineEdit();
+    } else {
+      setPrimaryContactInlineEditing(false);
+    }
+  }, [activeTab, resident, openPrimaryContactInlineEdit]);
+
+  const primaryContactSaveEnabled = useMemo(
+    () => isResidentContactDraftComplete(primaryContactDraft),
+    [primaryContactDraft],
+  );
+
+  const savePrimaryContactInline = useCallback(() => {
+    if (!resident) return;
+    if (!isResidentContactDraftComplete(primaryContactDraft)) {
+      setPrimaryContactFormError('All fields except Notes are required. Enter a valid email.');
+      return;
+    }
+    const { firstName, lastName, phone, email, relationship, notes } = primaryContactDraft;
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const em = email.trim();
+    const ph = phone.trim();
+    setPrimaryContactFormError(null);
+    setPrimaryContactSaving(true);
+    try {
+      const payload = {
+        first_name: fn || null,
+        last_name: ln || null,
+        email: em || null,
+        phone: ph || null,
+        relationship: relationship.trim() || null,
+        notes: notes.trim() || null,
+      };
+      setRecords((prev) =>
+        prev.map((row) => {
+          if (row.id !== resident.id) return row;
+          return {
+            ...row,
+            primary_contact: {
+              id: row.primary_contact?.id ?? `demo-pc-${resident.id}`,
+              ...payload,
+            },
+          };
+        }),
+      );
+      setPrimaryContactInlineEditing(false);
+      setResidentEditToast({
+        message: 'Primary contact saved',
+        variant: 'success',
+      });
+    } finally {
+      setPrimaryContactSaving(false);
+    }
+  }, [resident, primaryContactDraft, setRecords]);
+
+  const openSecondaryContactInlineEdit = useCallback(() => {
+    if (!resident) return;
+    setSecondaryDraft(draftFromDemoContact(resident.secondary_contact));
+    setSecondaryFormError(null);
+    setSecondaryInlineEditing(true);
+  }, [resident]);
+
+  const secondaryContactSaveEnabled = useMemo(() => isResidentContactDraftComplete(secondaryDraft), [secondaryDraft]);
+
+  const saveSecondaryContactInline = useCallback(() => {
+    if (!resident || !isResidentContactDraftComplete(secondaryDraft)) {
+      setSecondaryFormError('All fields except Notes are required. Enter a valid email.');
+      return;
+    }
+    setSecondaryFormError(null);
+    setSecondarySaving(true);
+    try {
+      const payload = {
+        first_name: secondaryDraft.firstName.trim() || null,
+        last_name: secondaryDraft.lastName.trim() || null,
+        email: secondaryDraft.email.trim() || null,
+        phone: secondaryDraft.phone.trim() || null,
+        relationship: secondaryDraft.relationship.trim() || null,
+        notes: secondaryDraft.notes.trim() || null,
+      };
+      setRecords((prev) =>
+        prev.map((row) => {
+          if (row.id !== resident.id) return row;
+          return {
+            ...row,
+            secondary_contact: {
+              id: row.secondary_contact?.id ?? `demo-sc-${resident.id}`,
+              ...payload,
+            },
+          };
+        }),
+      );
+      setSecondaryInlineEditing(false);
+      setResidentEditToast({ message: 'Secondary contact saved', variant: 'success' });
+    } finally {
+      setSecondarySaving(false);
+    }
+  }, [resident, secondaryDraft, setRecords]);
+
+  const additionalContactSaveEnabled = useMemo(
+    () => isResidentContactDraftComplete(additionalDraft),
+    [additionalDraft],
+  );
+
+  const saveAdditionalContactInline = useCallback(() => {
+    if (!resident || !additionalEditingId || !isResidentContactDraftComplete(additionalDraft)) {
+      setAdditionalFormError('All fields except Notes are required. Enter a valid email.');
+      return;
+    }
+    setAdditionalFormError(null);
+    setAdditionalSaving(true);
+    const editId = additionalEditingId;
+    try {
+      const payload = {
+        first_name: additionalDraft.firstName.trim() || null,
+        last_name: additionalDraft.lastName.trim() || null,
+        email: additionalDraft.email.trim() || null,
+        phone: additionalDraft.phone.trim() || null,
+        relationship: additionalDraft.relationship.trim() || null,
+        notes: additionalDraft.notes.trim() || null,
+      };
+      setRecords((prev) =>
+        prev.map((row) => {
+          if (row.id !== resident.id) return row;
+          return {
+            ...row,
+            additional_contacts: row.additional_contacts.map((c) =>
+              c.id === editId ? { ...c, ...payload } : c,
+            ),
+          };
+        }),
+      );
+      setAdditionalEditingId(null);
+      setResidentEditToast({ message: 'Additional contact saved', variant: 'success' });
+    } finally {
+      setAdditionalSaving(false);
+    }
+  }, [resident, additionalEditingId, additionalDraft, setRecords]);
+
+  const appendAdditionalContactRow = useCallback(() => {
+    if (!resident) return;
+    const newId = `demo-ac-${Date.now()}`;
+    setRecords((prev) =>
+      prev.map((row) =>
+        row.id === resident.id
+          ? {
+              ...row,
+              additional_contacts: [
+                ...row.additional_contacts,
+                {
+                  id: newId,
+                  first_name: null,
+                  last_name: null,
+                  email: null,
+                  phone: null,
+                  relationship: null,
+                  notes: null,
+                },
+              ],
+            }
+          : row,
+      ),
+    );
+    setAdditionalDraft(emptyResidentContactDraft());
+    setAdditionalFormError(null);
+    setAdditionalEditingId(newId);
+  }, [resident, setRecords]);
+
+  const cancelAdditionalContactEdit = useCallback(() => {
+    if (!additionalEditingId) {
+      setAdditionalEditingId(null);
+      return;
+    }
+    const rid = resident?.id;
+    const c = resident?.additional_contacts.find((x) => x.id === additionalEditingId);
+    if (rid && c && isDemoContactEmpty(c)) {
+      setRecords((prev) =>
+        prev.map((row) =>
+          row.id === rid
+            ? {
+                ...row,
+                additional_contacts: row.additional_contacts.filter((x) => x.id !== additionalEditingId),
+              }
+            : row,
+        ),
+      );
+    }
+    setAdditionalEditingId(null);
+    setAdditionalFormError(null);
+  }, [resident, additionalEditingId, setRecords]);
+
+  const openAdditionalContactInlineEdit = useCallback(
+    (c: DemoResidentContact) => {
+      setAdditionalDraft(draftFromDemoContact(c));
+      setAdditionalFormError(null);
+      setAdditionalEditingId(c.id);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!statusDropdownOpen) return;
@@ -740,10 +1414,11 @@ export default function ResidentDetail() {
     }
   };
 
-  const nowCal = new Date();
-  const calYear = nowCal.getFullYear();
-  const calMonth = nowCal.getMonth() + 1;
-  const isCurrentOrFutureMonth = selectedYear > calYear || (selectedYear === calYear && selectedMonth >= calMonth);
+  const calNow = new Date();
+  const calYearNow = calNow.getFullYear();
+  const calMonthNow = calNow.getMonth() + 1;
+  const canGoCommunityUpdatesNext =
+    selectedYear < calYearNow || (selectedYear === calYearNow && selectedMonth < calMonthNow);
 
   if (!residentId) {
     return (
@@ -778,11 +1453,6 @@ export default function ResidentDetail() {
     title: resident.community_name || 'Community',
     sentDisplay: '12/16/2025',
   };
-
-  const serviceTasksForDetail: DummyTask[] = [
-    { id: 'st1', description: 'Initial consultation', status: 'completed', ownerInitials: 'JD', dueDisplay: '11/01/2025' },
-    { id: 'st2', description: 'Follow-up checklist', status: 'in-progress', ownerInitials: 'JD', dueDisplay: '12/05/2025', hasNote: true },
-  ];
 
   const renderRelocationCard = () => (
     <div
@@ -869,20 +1539,28 @@ export default function ResidentDetail() {
       className="absolute left-0 right-0 z-10 flex flex-wrap justify-center gap-2 rounded-t-2xl"
       style={{ top: 2, padding: 24 }}
     >
-      <TabButton active={activeTab === 'resident'} onClick={() => setActiveTab('resident')} icon={User} label="Resident" />
+      <TabButton
+        active={activeTab === 'resident'}
+        onClick={() => setActiveTab('resident')}
+        iconSrc={tabIconProfile}
+        iconSrcActive={tabIconProfileWhite}
+        label="Resident"
+      />
       <TabButton
         active={activeTab === 'supply-partners'}
         onClick={() => {
           setActiveTab('supply-partners');
           setSelectedSupplyService(null);
         }}
-        icon={Settings}
+        iconSrc={tabIconLikeShapes}
+        iconSrcActive={tabIconLikeShapesWhite}
         label="Supply Partners"
       />
       <TabButton
         active={activeTab === 'resident-contacts'}
         onClick={() => setActiveTab('resident-contacts')}
-        icon={Users}
+        iconSrc={tabIconProfile2User}
+        iconSrcActive={tabIconProfile2UserWhite}
         label="Resident Contacts"
       />
     </div>
@@ -892,12 +1570,17 @@ export default function ResidentDetail() {
     if (activeTab === 'resident') {
       return (
         <div>
-          <h3 className="mb-4 font-source-sans-3" style={contentSectionHeaderStyle}>
+          <h3 className="mb-4 text-left font-source-sans-3" style={{ ...contentSectionHeaderStyle, textAlign: 'left' }}>
             Community Updates
           </h3>
           <div className="mb-4 flex items-center justify-between gap-4">
-            <button type="button" onClick={goPrevMonth} className="font-source-sans-3 flex items-center gap-1.5 hover:opacity-90" style={paginationNavStyle}>
-              <ChevronLeft size={18} style={{ color: '#ACACAD', flexShrink: 0 }} />
+            <button
+              type="button"
+              onClick={goPrevMonth}
+              className="font-source-sans-3 flex items-center gap-1.5 transition-opacity hover:opacity-90"
+              style={{ ...communityUpdatesNavButtonBaseStyle, color: communityUpdatesNavEnabledColor }}
+            >
+              <ChevronLeft size={18} style={{ color: communityUpdatesNavEnabledColor, flexShrink: 0 }} />
               Previous
             </button>
             <span className="flex-1 text-center font-source-sans-3" style={communityUpdatesMonthLabelStyle}>
@@ -906,12 +1589,24 @@ export default function ResidentDetail() {
             <button
               type="button"
               onClick={goNextMonth}
-              disabled={isCurrentOrFutureMonth}
-              className="font-source-sans-3 flex items-center gap-1.5 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              style={paginationNavStyle}
+              disabled={!canGoCommunityUpdatesNext}
+              aria-disabled={!canGoCommunityUpdatesNext}
+              className={`font-source-sans-3 flex items-center gap-1.5 ${
+                canGoCommunityUpdatesNext ? 'transition-opacity hover:opacity-90' : 'cursor-not-allowed'
+              }`}
+              style={{
+                ...communityUpdatesNavButtonBaseStyle,
+                color: canGoCommunityUpdatesNext ? communityUpdatesNavEnabledColor : communityUpdatesNavDisabledColor,
+              }}
             >
               Next
-              <ChevronRight size={18} style={{ color: '#ACACAD', flexShrink: 0 }} />
+              <ChevronRight
+                size={18}
+                style={{
+                  color: canGoCommunityUpdatesNext ? communityUpdatesNavEnabledColor : communityUpdatesNavDisabledColor,
+                  flexShrink: 0,
+                }}
+              />
             </button>
           </div>
           <div className="space-y-2">
@@ -931,6 +1626,45 @@ export default function ResidentDetail() {
 
     if (activeTab === 'supply-partners') {
       if (selectedSupplyService) {
+        const isRealEstate = selectedSupplyService.id === 's1';
+        if (isRealEstate) {
+          const milestoneScenario = selectedSupplyService.realEstateMilestoneScenario ?? 'standard';
+          return (
+            <div>
+              <button
+                type="button"
+                onClick={() => setSelectedSupplyService(null)}
+                className="mb-4 flex items-center gap-1 font-source-sans-3 hover:opacity-90"
+                style={supplyPartnerBackLinkStyle}
+              >
+                <ArrowLeft size={16} style={{ color: '#359689' }} />
+                Back to All Services
+              </button>
+              <div className="mb-6 flex items-center justify-between">
+                <h2 className="font-source-sans-3" style={contentSectionHeaderStyle}>
+                  Real Estate Milestones
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSupplyService(null)}
+                  className="font-source-sans-3 flex items-center justify-center hover:opacity-90"
+                  style={supplyPartnerCloseButtonStyle}
+                >
+                  Close Service
+                </button>
+              </div>
+              <RealEstateMilestonesPanel
+                scenario={milestoneScenario}
+                serviceId={selectedSupplyService.id}
+                milestoneStatusOverrides={milestoneStatusByKey}
+                todayShort={milestoneTodayShort}
+                onMilestonePopoverOpen={handleMilestonePopoverOpen}
+              />
+            </div>
+          );
+        }
+
+        const genericScenario = selectedSupplyService.genericMilestoneScenario ?? 'two_complete_one_pending';
         return (
           <div>
             <button
@@ -944,7 +1678,7 @@ export default function ResidentDetail() {
             </button>
             <div className="mb-6 flex items-center justify-between">
               <h2 className="font-source-sans-3" style={contentSectionHeaderStyle}>
-                {selectedSupplyService.name}
+                {selectedSupplyService.name} Milestones
               </h2>
               <button
                 type="button"
@@ -955,71 +1689,13 @@ export default function ResidentDetail() {
                 Close Service
               </button>
             </div>
-            <div className="grid gap-4 pb-2 mb-2" style={{ gridTemplateColumns: 'minmax(0,1fr) 56px 10% 10%' }}>
-              <div className="font-source-sans-3 text-left" style={residentTasksColumnHeaderStyle}>
-                Status
-              </div>
-              <div className="font-source-sans-3 text-left" style={residentTasksColumnHeaderStyle} aria-hidden />
-              <div className="font-source-sans-3 text-left" style={residentTasksColumnHeaderStyle}>
-                Owner
-              </div>
-              <div className="font-source-sans-3 text-left" style={residentTasksColumnHeaderStyle}>
-                Due On
-              </div>
-            </div>
-            <div className="space-y-0">
-              {serviceTasksForDetail.map((task, index) => {
-                const list = serviceTasksForDetail;
-                const isFirst = index === 0;
-                const isLast = index === list.length - 1;
-                return (
-                  <div
-                    key={task.id}
-                    className={`grid items-center gap-4 p-4 ${isFirst ? 'rounded-t-xl' : ''} ${isLast ? 'rounded-b-xl' : ''}`}
-                    style={{
-                      gridTemplateColumns: 'minmax(0,1fr) 56px 10% 10%',
-                      border: `1px solid ${taskListBorderColor}`,
-                      ...(isFirst ? {} : { borderTop: 'none' }),
-                    }}
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      {getTaskStatusIcon(task.status)}
-                      <span className="truncate font-source-sans-3" style={residentTasksRowTextStyle}>
-                        {task.description}
-                      </span>
-                    </div>
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      {task.hasNote && <StickyNote size={16} className="flex-shrink-0" style={{ color: '#307584' }} />}
-                      {task.hasAttachment && <Paperclip size={16} className="flex-shrink-0" style={{ color: '#C8C8C8' }} />}
-                    </div>
-                    <div className="flex min-w-0 items-center gap-1">
-                      <div
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-inter font-semibold text-white"
-                        style={{
-                          width: 24,
-                          height: 24,
-                          backgroundColor: '#307584',
-                          borderRadius: 100,
-                          border: '1.5px solid #FFFFFF',
-                          fontSize: 10,
-                        }}
-                      >
-                        {task.ownerInitials}
-                      </div>
-                      <button
-                        type="button"
-                        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-dashed hover:opacity-80"
-                        style={{ borderColor: '#E5E5E5' }}
-                        aria-label="Add owner (demo)"
-                      >
-                        <Plus size={14} style={{ color: '#A3A3A3' }} strokeWidth={2} />
-                      </button>
-                    </div>
-                    <span className="font-source-sans-3 text-[#505051]">{task.dueDisplay}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <GenericServiceMilestonesPanel
+              scenario={genericScenario}
+              serviceId={selectedSupplyService.id}
+              milestoneStatusOverrides={milestoneStatusByKey}
+              todayShort={milestoneTodayShort}
+              onMilestonePopoverOpen={handleMilestonePopoverOpen}
+            />
           </div>
         );
       }
@@ -1045,7 +1721,12 @@ export default function ResidentDetail() {
                     }}
                   >
                     <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-white sm:mb-4 sm:h-16 sm:w-16">
-                      <Building2 size={28} className="text-[#307584]" strokeWidth={1.5} />
+                      <img
+                        src={service.iconSrc}
+                        alt=""
+                        className="h-7 w-7 object-contain sm:h-8 sm:w-8"
+                        draggable={false}
+                      />
                     </div>
                     <h4 className="mb-3 w-full text-center font-source-sans-3 sm:mb-4" style={supplyPartnersServiceLabelStyle}>
                       {service.name}
@@ -1068,7 +1749,12 @@ export default function ResidentDetail() {
                   style={{ backgroundColor: '#F1F1F1', borderColor: '#F1F1F1' }}
                 >
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg sm:h-16 sm:w-16">
-                    <Building2 size={28} className="text-[#307584]" strokeWidth={1.5} />
+                    <img
+                      src={service.iconSrc}
+                      alt=""
+                      className="h-7 w-7 object-contain opacity-90 sm:h-8 sm:w-8"
+                      draggable={false}
+                    />
                   </div>
                   <h4 className="w-full text-center font-source-sans-3" style={supplyPartnersServiceLabelStyle}>
                     {service.name}
@@ -1082,68 +1768,325 @@ export default function ResidentDetail() {
     }
 
     const pc = resident.primary_contact;
-    const primaryName = pc
-      ? [pc.first_name, pc.last_name].filter(Boolean).join(' ').trim() || '—'
-      : '—';
+    const sc = resident.secondary_contact;
+    const additionals = resident.additional_contacts ?? [];
+
+    const tealContactCardStyle: CSSProperties = {
+      backgroundColor: RESIDENT_CONTACTS_SECTION_BG,
+      borderRadius: 16,
+      padding: 24,
+    };
+    const additionalContactCardStyle: CSSProperties = {
+      backgroundColor: RESIDENT_CONTACTS_ADDITIONAL_BG,
+      borderRadius: 16,
+      padding: 24,
+    };
+    const addContactButtonStyle: CSSProperties = {
+      height: 40,
+      paddingLeft: 20,
+      paddingRight: 20,
+      borderRadius: 9999,
+      backgroundColor: '#307584',
+      fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+      fontWeight: 600,
+      fontSize: 14,
+      lineHeight: '20px',
+      color: '#FFFFFF',
+    };
+
+    const contactFormActionCancelStyle: CSSProperties = {
+      height: 48,
+      padding: '10px 24px',
+      borderRadius: 9999,
+      border: '1px solid #83ACB5',
+      backgroundColor: '#EAF1F3',
+      fontWeight: 500,
+      fontSize: 16,
+      color: '#307584',
+    };
+    const contactFormActionSaveStyle: CSSProperties = {
+      height: 48,
+      padding: '10px 24px',
+      borderRadius: 9999,
+      backgroundColor: '#307584',
+      fontWeight: 500,
+      fontSize: 16,
+      color: '#FFFFFF',
+    };
+    const contactFormActionSaveDisabledStyle: CSSProperties = {
+      ...contactFormActionSaveStyle,
+      backgroundColor: 'hsla(0, 0%, 96%, 1)',
+      color: 'hsla(0, 0%, 64%, 1)',
+    };
+
+    const showPrimaryContactCancel = pc !== null && !isDemoContactEmpty(pc);
+
+    const renderContactReadBody = (c: DemoResidentContact) => {
+      const displayName = [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || '—';
+      return (
+        <div className="space-y-2">
+          <p className="font-source-sans-3" style={primaryContactTextStyle}>
+            {displayName}
+          </p>
+          {getTelHref(c.phone ?? '') ? (
+            <a
+              href={getTelHref(c.phone ?? '')}
+              className="font-source-sans-3 block"
+              style={{ ...primaryContactTextStyle, color: '#307584', textDecoration: 'underline' }}
+            >
+              {formatPhoneUS(c.phone ?? '')}
+            </a>
+          ) : (
+            <p className="font-source-sans-3" style={primaryContactTextStyle}>
+              {formatPhoneUS(c.phone ?? '')}
+            </p>
+          )}
+          <a
+            href={c.email ? `mailto:${c.email}` : '#'}
+            className="font-source-sans-3 block"
+            style={{ ...primaryContactTextStyle, color: c.email ? '#359689' : undefined }}
+            onClick={(e) => !c.email && e.preventDefault()}
+          >
+            {c.email || '—'}
+          </a>
+          <p className="font-source-sans-3" style={primaryContactTextStyle}>
+            {c.relationship || '—'}
+          </p>
+          <p className="mt-3 font-source-sans-3" style={primaryContactNotesStyle}>
+            {(c.notes ?? '').trim() || '—'}
+          </p>
+        </div>
+      );
+    };
 
     return (
       <div className="space-y-6">
-        <div className="rounded-xl p-6 font-source-sans-3" style={{ backgroundColor: '#EAF1F3' }}>
+        <div className="rounded-xl font-source-sans-3" style={tealContactCardStyle}>
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-left font-source-sans-3" style={residentContactsSectionHeaderStyle}>
               Primary Contact
             </h3>
-            <button
-              type="button"
-              onClick={openEditResident}
-              className="rounded p-1 text-gray-400 hover:text-gray-600"
-              aria-label="Edit primary contact"
-            >
-              <Pencil size={18} strokeWidth={1.5} />
-            </button>
-          </div>
-          {pc ? (
-            <div className="space-y-2">
-              <p className="font-source-sans-3" style={primaryContactTextStyle}>
-                {primaryName}
-              </p>
-              {getTelHref(pc.phone ?? '') ? (
-                <a
-                  href={getTelHref(pc.phone ?? '')}
-                  className="font-source-sans-3 block"
-                  style={{ ...primaryContactTextStyle, color: '#307584', textDecoration: 'underline' }}
-                >
-                  {formatPhoneUS(pc.phone ?? '')}
-                </a>
-              ) : (
-                <p className="font-source-sans-3" style={primaryContactTextStyle}>
-                  {formatPhoneUS(pc.phone ?? '')}
-                </p>
-              )}
-              <a
-                href={pc.email ? `mailto:${pc.email}` : '#'}
-                className="font-source-sans-3 block"
-                style={{ ...primaryContactTextStyle, color: pc.email ? '#359689' : undefined }}
-                onClick={(e) => !pc.email && e.preventDefault()}
+            {!primaryContactInlineEditing ? (
+              <button
+                type="button"
+                onClick={openPrimaryContactInlineEdit}
+                className="rounded p-1 text-[#307584] transition-opacity hover:opacity-80"
+                aria-label="Edit primary contact"
               >
-                {pc.email || '—'}
-              </a>
-              <p className="font-source-sans-3" style={primaryContactTextStyle}>
-                {pc.relationship || '—'}
-              </p>
-              <p className="mt-3 font-source-sans-3" style={primaryContactNotesStyle}>
-                {(pc.notes ?? '').trim() || '—'}
-              </p>
+                <Pencil size={18} strokeWidth={1.5} />
+              </button>
+            ) : null}
+          </div>
+
+          {primaryContactInlineEditing ? (
+            <div>
+              <ResidentContactInlineFormFields
+                idPrefix="rd-pc"
+                draft={primaryContactDraft}
+                setDraft={setPrimaryContactDraft}
+                disabled={primaryContactSaving}
+              />
+              {primaryContactFormError ? (
+                <p className="mt-3 font-source-sans-3 text-sm text-red-600" role="alert">
+                  {primaryContactFormError}
+                </p>
+              ) : null}
+              <div className="mt-6 flex flex-wrap justify-end gap-3">
+                {showPrimaryContactCancel ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrimaryContactInlineEditing(false);
+                      setPrimaryContactFormError(null);
+                    }}
+                    disabled={primaryContactSaving}
+                    className="font-source-sans-3 transition-opacity hover:opacity-90 disabled:opacity-50"
+                    style={contactFormActionCancelStyle}
+                  >
+                    Cancel
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={savePrimaryContactInline}
+                  disabled={primaryContactSaving || !primaryContactSaveEnabled}
+                  className={`font-source-sans-3 transition-opacity hover:opacity-90 ${
+                    primaryContactSaving || !primaryContactSaveEnabled ? 'cursor-not-allowed' : ''
+                  }`}
+                  style={
+                    primaryContactSaving || !primaryContactSaveEnabled
+                      ? contactFormActionSaveDisabledStyle
+                      : contactFormActionSaveStyle
+                  }
+                >
+                  {primaryContactSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
+          ) : pc ? (
+            renderContactReadBody(pc)
           ) : (
-            <p className="font-source-sans-3 text-gray-600">No primary contact on file.</p>
+            <p className="font-source-sans-3 text-gray-600">No primary contact on file. Use the edit button to add one.</p>
           )}
         </div>
-        <div className="rounded-xl p-6 font-source-sans-3" style={{ backgroundColor: '#EAF1F3' }}>
-          <h3 className="mb-2 text-left font-source-sans-3" style={residentContactsSectionHeaderStyle}>
-            Secondary Contact
+
+        <div className="rounded-xl font-source-sans-3" style={tealContactCardStyle}>
+          <div
+            className={`flex flex-wrap items-center justify-between gap-4${secondaryInlineEditing || sc ? ' mb-4' : ''}`}
+          >
+            <h3 className="text-left font-source-sans-3" style={residentContactsSectionHeaderStyle}>
+              Secondary Contact
+            </h3>
+            {!secondaryInlineEditing && sc ? (
+              <button
+                type="button"
+                onClick={openSecondaryContactInlineEdit}
+                className="rounded p-1 text-[#307584] transition-opacity hover:opacity-80"
+                aria-label="Edit secondary contact"
+              >
+                <Pencil size={18} strokeWidth={1.5} />
+              </button>
+            ) : null}
+            {!secondaryInlineEditing && !sc ? (
+              <button
+                type="button"
+                onClick={openSecondaryContactInlineEdit}
+                className="shrink-0 transition-opacity hover:opacity-90"
+                style={addContactButtonStyle}
+              >
+                Add
+              </button>
+            ) : null}
+          </div>
+          {secondaryInlineEditing ? (
+            <div>
+              <ResidentContactInlineFormFields
+                idPrefix="rd-sc"
+                draft={secondaryDraft}
+                setDraft={setSecondaryDraft}
+                disabled={secondarySaving}
+              />
+              {secondaryFormError ? (
+                <p className="mt-3 font-source-sans-3 text-sm text-red-600" role="alert">
+                  {secondaryFormError}
+                </p>
+              ) : null}
+              <div className="mt-6 flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSecondaryInlineEditing(false);
+                    setSecondaryFormError(null);
+                  }}
+                  disabled={secondarySaving}
+                  className="font-source-sans-3 transition-opacity hover:opacity-90 disabled:opacity-50"
+                  style={contactFormActionCancelStyle}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveSecondaryContactInline}
+                  disabled={secondarySaving || !secondaryContactSaveEnabled}
+                  className={`font-source-sans-3 transition-opacity hover:opacity-90 ${
+                    secondarySaving || !secondaryContactSaveEnabled ? 'cursor-not-allowed' : ''
+                  }`}
+                  style={
+                    secondarySaving || !secondaryContactSaveEnabled
+                      ? contactFormActionSaveDisabledStyle
+                      : contactFormActionSaveStyle
+                  }
+                >
+                  {secondarySaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          ) : sc ? (
+            renderContactReadBody(sc)
+          ) : null}
+        </div>
+
+        {additionals.map((ac) => {
+          const showAdditionalForm = additionalEditingId === ac.id;
+          return (
+            <div key={ac.id} className="rounded-xl font-source-sans-3" style={additionalContactCardStyle}>
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-left font-source-sans-3" style={residentContactsSectionHeaderStyle}>
+                  Additional Contact
+                </h3>
+                {!showAdditionalForm && !isDemoContactEmpty(ac) ? (
+                  <button
+                    type="button"
+                    onClick={() => openAdditionalContactInlineEdit(ac)}
+                    className="rounded p-1 text-[#307584] transition-opacity hover:opacity-80"
+                    aria-label="Edit additional contact"
+                  >
+                    <Pencil size={18} strokeWidth={1.5} />
+                  </button>
+                ) : null}
+              </div>
+              {showAdditionalForm ? (
+                <div>
+                  <ResidentContactInlineFormFields
+                    idPrefix={`rd-ac-${ac.id}`}
+                    draft={additionalDraft}
+                    setDraft={setAdditionalDraft}
+                    disabled={additionalSaving}
+                  />
+                  {additionalFormError ? (
+                    <p className="mt-3 font-source-sans-3 text-sm text-red-600" role="alert">
+                      {additionalFormError}
+                    </p>
+                  ) : null}
+                  <div className="mt-6 flex flex-wrap justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={cancelAdditionalContactEdit}
+                      disabled={additionalSaving}
+                      className="font-source-sans-3 transition-opacity hover:opacity-90 disabled:opacity-50"
+                      style={contactFormActionCancelStyle}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveAdditionalContactInline}
+                      disabled={additionalSaving || !additionalContactSaveEnabled}
+                      className={`font-source-sans-3 transition-opacity hover:opacity-90 ${
+                        additionalSaving || !additionalContactSaveEnabled ? 'cursor-not-allowed' : ''
+                      }`}
+                      style={
+                        additionalSaving || !additionalContactSaveEnabled
+                          ? contactFormActionSaveDisabledStyle
+                          : contactFormActionSaveStyle
+                      }
+                    >
+                      {additionalSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                renderContactReadBody(ac)
+              )}
+            </div>
+          );
+        })}
+
+        <div
+          className="flex flex-wrap items-center justify-between gap-4 rounded-xl font-source-sans-3"
+          style={additionalContactCardStyle}
+        >
+          <h3 className="text-left font-source-sans-3" style={residentContactsSectionHeaderStyle}>
+            Additional Contact
           </h3>
-          <p className="font-source-sans-3 text-gray-600">No secondary contact (demo).</p>
+          <button
+            type="button"
+            onClick={appendAdditionalContactRow}
+            className="shrink-0 transition-opacity hover:opacity-90"
+            style={addContactButtonStyle}
+          >
+            Add
+          </button>
         </div>
       </div>
     );
@@ -1192,11 +2135,15 @@ export default function ResidentDetail() {
 
   const renderRightColumn = () => (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
-      <div className="relative flex-shrink-0 bg-[hsla(193,27%,94%,1)]" style={{ width: '100%', minHeight: 48, marginTop: -24 }}>
+      {/* Negative margin only when tabs sit beside the left column (xl); otherwise it overlaps Notes' shadow */}
+      <div
+        className="relative mt-0 flex-shrink-0 bg-[hsla(193,27%,94%,1)] xl:-mt-6"
+        style={{ width: '100%', minHeight: 48 }}
+      >
         {renderTabStrip()}
         <div
           className="flex flex-col overflow-hidden rounded-2xl"
-          style={{ marginTop: 48, backgroundColor: '#FFFFFF', borderRadius: 16, boxShadow: 'var(--resident-card-shadow)' }}
+          style={{ marginTop: 48, backgroundColor: '#FFFFFF', borderRadius: 16 }}
         >
           <div className="flex flex-col" style={communityUpdatesContentStyle}>
             {renderTabPanelInner()}
@@ -1205,8 +2152,8 @@ export default function ResidentDetail() {
       </div>
       {activeTab === 'resident' && renderResidentChatterCard()}
       {activeTab === 'resident' && (
-        <div className="rounded-2xl" style={residentTasksContainerStyle}>
-          <h3 className="text-left font-source-sans-3" style={{ ...contentSectionHeaderStyle, textAlign: 'left' }}>
+        <div className="overflow-hidden rounded-2xl" style={residentTasksContainerStyle}>
+          <h3 className="mb-6 text-left font-source-sans-3" style={{ ...contentSectionHeaderStyle, textAlign: 'left' }}>
             Resident Tasks
           </h3>
           {!isActive ? (
@@ -1215,68 +2162,60 @@ export default function ResidentDetail() {
             </p>
           ) : (
             <>
-              <div className="mb-2 grid gap-4 pb-2" style={{ gridTemplateColumns: 'minmax(0,1fr) 56px 10% 10%' }}>
-                <div className="text-left font-source-sans-3" style={residentTasksColumnHeaderStyle}>
+              <div
+                className="mb-0 grid gap-x-6 gap-y-0 border-b pb-3 font-source-sans-3"
+                style={{
+                  gridTemplateColumns: RESIDENT_TASKS_GRID_COLUMNS,
+                  borderColor: taskListBorderColor,
+                }}
+              >
+                <div className="flex items-end" style={residentTasksColumnHeaderStyle}>
                   Status
                 </div>
-                <div className="text-left font-source-sans-3" style={residentTasksColumnHeaderStyle} aria-hidden />
-                <div className="text-left font-source-sans-3" style={residentTasksColumnHeaderStyle}>
+                <div aria-hidden />
+                <div className="flex items-end justify-end" style={residentTasksColumnHeaderRightStyle}>
                   Owner
                 </div>
-                <div className="text-left font-source-sans-3" style={residentTasksColumnHeaderStyle}>
+                <div className="flex items-end justify-end" style={residentTasksColumnHeaderRightStyle}>
                   Due On
                 </div>
               </div>
-              <div className="space-y-0">
-                {DUMMY_TASKS.map((task, taskIndex) => {
-                  const isFirst = taskIndex === 0;
-                  const isLast = taskIndex === DUMMY_TASKS.length - 1;
-                  return (
-                    <div
-                      key={task.id}
-                      className={`grid cursor-default items-center gap-4 p-4 ${isFirst ? 'rounded-t-xl' : ''} ${isLast ? 'rounded-b-xl' : ''}`}
-                      style={{
-                        gridTemplateColumns: 'minmax(0,1fr) 56px 10% 10%',
-                        border: `1px solid ${taskListBorderColor}`,
-                        ...(isFirst ? {} : { borderTop: 'none' }),
-                      }}
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        {getTaskStatusIcon(task.status)}
-                        <span className="truncate font-source-sans-3" style={residentTasksRowTextStyle}>
-                          {task.description}
-                        </span>
-                      </div>
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        {task.hasNote && <StickyNote size={16} className="flex-shrink-0" style={{ color: '#307584' }} />}
-                        {task.hasAttachment && <Paperclip size={16} className="flex-shrink-0" style={{ color: '#C8C8C8' }} />}
-                      </div>
-                      <div className="flex min-w-0 items-center gap-1">
-                        <div
-                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-inter font-semibold text-white"
-                          style={{
-                            width: 24,
-                            height: 24,
-                            backgroundColor: '#307584',
-                            borderRadius: 100,
-                            border: '1.5px solid #FFFFFF',
-                            fontSize: 10,
-                          }}
-                        >
-                          {task.ownerInitials}
-                        </div>
-                        <span
-                          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-dashed"
-                          style={{ borderColor: '#E5E5E5' }}
-                          aria-hidden
-                        >
-                          <Plus size={14} style={{ color: '#A3A3A3' }} strokeWidth={2} />
-                        </span>
-                      </div>
-                      <span className="font-source-sans-3 text-[#505051]">{task.dueDisplay}</span>
+              <div>
+                {DUMMY_TASKS.map((task, taskIndex) => (
+                  <div
+                    key={task.id}
+                    className="grid cursor-default items-center gap-x-6 gap-y-0 py-4 font-source-sans-3"
+                    style={{
+                      gridTemplateColumns: RESIDENT_TASKS_GRID_COLUMNS,
+                      borderBottom:
+                        taskIndex < DUMMY_TASKS.length - 1 ? `1px solid ${taskListBorderColor}` : undefined,
+                    }}
+                  >
+                    <div className="flex items-center justify-start self-center pt-0.5">
+                      {getTaskStatusIcon(task.status)}
                     </div>
-                  );
-                })}
+                    <div className="min-w-0 self-center pr-1">
+                      <span
+                        className="block truncate font-source-sans-3"
+                        style={residentTasksRowTextStyle}
+                        title={task.description}
+                      >
+                        {task.description}
+                      </span>
+                    </div>
+                    <div className="min-w-0 self-center">
+                      <ResidentTaskOwnerPair pair={task.ownerPair === undefined ? null : task.ownerPair} />
+                    </div>
+                    <div className="flex min-w-0 items-center justify-end self-center">
+                      <span
+                        className="shrink-0 text-right tabular-nums"
+                        style={task.dueDisplay ? residentTasksDueActiveStyle : residentTasksDueInactiveStyle}
+                      >
+                        {task.dueDisplay ?? '--'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           )}
@@ -1310,7 +2249,7 @@ export default function ResidentDetail() {
 
   return (
     <>
-    <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col pb-24 max-lg:pb-28">
+    <div className="flex w-full min-w-0 flex-col pb-28 max-lg:pb-32">
       <div className="lg:hidden">
         <div className="mb-4 border-b border-gray-200 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
@@ -1333,11 +2272,40 @@ export default function ResidentDetail() {
         {leftStack}
         {renderRightColumn()}
       </div>
+      {/* Ensures scroll past last card: content-sized page, not flex-stretched to viewport */}
+      <div className="h-12 shrink-0 max-lg:h-16" aria-hidden />
     </div>
     <ResidentChatterDrawer
       open={chatterDrawerOpen}
       onClose={() => setChatterDrawerOpen(false)}
       messageRecipientName={chatterRecipientName}
+    />
+    {resident && (
+      <ResidentFormSlidePanel
+        open={residentEditPanelOpen}
+        onClose={() => setResidentEditPanelOpen(false)}
+        editingResidentId={residentEditPanelOpen ? resident.id : null}
+        onSaveSuccess={setResidentEditToast}
+      />
+    )}
+    {residentEditToast && (
+      <BottomToast
+        message={residentEditToast.message}
+        variant={residentEditToast.variant}
+        onDismiss={() => setResidentEditToast(null)}
+      />
+    )}
+    <MilestoneStatusPopover
+      open={Boolean(milestonePopover)}
+      anchorRect={milestonePopover?.anchorRect ?? null}
+      current={milestonePopover?.currentWorkflow ?? 'todo'}
+      onClose={() => setMilestonePopover(null)}
+      onSelect={(status) => {
+        if (!milestonePopover) return;
+        const key = `${milestonePopover.serviceId}:${milestonePopover.rowId}`;
+        setMilestoneStatusByKey((prev) => ({ ...prev, [key]: status }));
+        setMilestonePopover(null);
+      }}
     />
     </>
   );

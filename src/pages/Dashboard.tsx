@@ -152,6 +152,9 @@ const DASHBOARD_VIEW_COMMUNITY_OPTIONS: DashboardViewOption[] = [
   { id: 'willow-creek', label: 'Willow Creek Retirement' },
 ];
 
+const COMMUNITY_UPDATES_NAV_ENABLED = 'hsla(191, 47%, 35%, 1)';
+const COMMUNITY_UPDATES_NAV_DISABLED = 'hsla(240, 1%, 68%, 1)';
+
 function ReferralMonthCard({
   cardKey,
   titleLabel,
@@ -874,6 +877,47 @@ export default function Dashboard() {
   const [atAGlanceOpenLabel, setAtAGlanceOpenLabel] = useState<string | null>(null);
   const [referralOpenKey, setReferralOpenKey] = useState<string | null>(null);
   const [referralCarouselIndex, setReferralCarouselIndex] = useState(REFERRAL_CAROUSEL_MAX_START);
+  const [communityUpdatesMonth, setCommunityUpdatesMonth] = useState(() => new Date().getMonth() + 1);
+  const [communityUpdatesYear, setCommunityUpdatesYear] = useState(() => new Date().getFullYear());
+
+  const goCommunityUpdatesPrev = useCallback(() => {
+    setCommunityUpdatesMonth((m) => {
+      if (m <= 1) {
+        setCommunityUpdatesYear((y) => y - 1);
+        return 12;
+      }
+      return m - 1;
+    });
+  }, []);
+
+  const goCommunityUpdatesNext = useCallback(() => {
+    const n = new Date();
+    const cy = n.getFullYear();
+    const cm = n.getMonth() + 1;
+    if (communityUpdatesYear > cy || (communityUpdatesYear === cy && communityUpdatesMonth >= cm)) return;
+    if (communityUpdatesMonth >= 12) {
+      setCommunityUpdatesMonth(1);
+      setCommunityUpdatesYear((y) => y + 1);
+    } else {
+      setCommunityUpdatesMonth((m) => m + 1);
+    }
+  }, [communityUpdatesYear, communityUpdatesMonth]);
+
+  const canGoCommunityUpdatesNext = useMemo(() => {
+    const n = new Date();
+    const cy = n.getFullYear();
+    const cm = n.getMonth() + 1;
+    return communityUpdatesYear < cy || (communityUpdatesYear === cy && communityUpdatesMonth < cm);
+  }, [communityUpdatesMonth, communityUpdatesYear]);
+
+  const communityUpdatesMonthLabel = useMemo(
+    () =>
+      new Date(communityUpdatesYear, communityUpdatesMonth - 1, 1).toLocaleString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      }),
+    [communityUpdatesMonth, communityUpdatesYear],
+  );
 
   const closeAtAGlanceDetail = useCallback(() => setAtAGlanceOpenLabel(null), []);
   const toggleAtAGlanceDetail = useCallback((label: string) => {
@@ -1121,16 +1165,24 @@ export default function Dashboard() {
             <div className="mb-4 grid grid-cols-3 items-center gap-2 font-source-sans-3 text-sm">
               <button
                 type="button"
-                disabled
-                className="cursor-default justify-self-start font-medium text-gray-400"
-                aria-disabled="true"
+                onClick={goCommunityUpdatesPrev}
+                className="justify-self-start font-bold transition-opacity hover:opacity-80"
+                style={{ color: COMMUNITY_UPDATES_NAV_ENABLED }}
               >
                 ← Previous
               </button>
-              <span className="text-center font-bold text-gray-900">April 2026</span>
+              <span className="text-center font-bold text-gray-900">{communityUpdatesMonthLabel}</span>
               <button
                 type="button"
-                className="justify-self-end font-bold text-[var(--primary)] transition-opacity hover:opacity-80"
+                onClick={goCommunityUpdatesNext}
+                disabled={!canGoCommunityUpdatesNext}
+                className={`justify-self-end font-bold ${
+                  canGoCommunityUpdatesNext ? 'transition-opacity hover:opacity-80' : 'cursor-not-allowed'
+                }`}
+                style={{
+                  color: canGoCommunityUpdatesNext ? COMMUNITY_UPDATES_NAV_ENABLED : COMMUNITY_UPDATES_NAV_DISABLED,
+                }}
+                aria-disabled={!canGoCommunityUpdatesNext}
               >
                 Next →
               </button>

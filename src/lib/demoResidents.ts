@@ -1,3 +1,19 @@
+/** Resident detail contacts — primary / secondary / additional list */
+export type DemoResidentContact = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  relationship: string | null;
+  notes: string | null;
+};
+
+export function isDemoContactEmpty(c: DemoResidentContact | null | undefined): boolean {
+  if (!c) return true;
+  return !(c.first_name ?? '').trim() && !(c.last_name ?? '').trim();
+}
+
 /** Full demo row — replace with backend model when the API is connected */
 export type DemoResidentRecord = {
   id: string;
@@ -18,15 +34,9 @@ export type DemoResidentRecord = {
   state: string | null;
   important_notes: string | null;
   gender?: string | null;
-  primary_contact: {
-    id: string;
-    first_name: string | null;
-    last_name: string | null;
-    email: string | null;
-    phone: string | null;
-    relationship: string | null;
-    notes: string | null;
-  } | null;
+  primary_contact: DemoResidentContact | null;
+  secondary_contact: DemoResidentContact | null;
+  additional_contacts: DemoResidentContact[];
 };
 
 export function toResidentSlug(firstName: string | null, lastName: string | null): string {
@@ -83,13 +93,34 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
       gender: 'Female',
       primary_contact: {
         id: 'demo-pc-1',
-        first_name: 'Ken',
+        first_name: 'Kenra',
         last_name: 'Smith',
-        email: 'ken@example.com',
-        phone: '555-0101',
-        relationship: 'Spouse',
-        notes: null,
+        email: 'ksmith@gmail.com',
+        phone: '1234567890',
+        relationship: 'Daughter',
+        notes:
+          'Kenra handles most things, but her brother, Nick, will handle the loans.',
       },
+      secondary_contact: {
+        id: 'demo-sc-1',
+        first_name: 'Nick',
+        last_name: 'Smith',
+        email: 'nsmith@gmail.com',
+        phone: '1234567890',
+        relationship: 'Son',
+        notes: 'Nick is back up and is better for loan questions',
+      },
+      additional_contacts: [
+        {
+          id: 'demo-ac-1',
+          first_name: 'George',
+          last_name: 'Smith',
+          email: 'gsmith@gmail.com',
+          phone: '1234567890',
+          relationship: 'Son in law',
+          notes: 'Married to Kenra',
+        },
+      ],
     },
     {
       id: 'demo-r-2',
@@ -118,6 +149,8 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
         relationship: 'Spouse',
         notes: null,
       },
+      secondary_contact: null,
+      additional_contacts: [],
     },
     {
       id: 'demo-r-3',
@@ -138,6 +171,8 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
       state: 'OR',
       important_notes: null,
       primary_contact: null,
+      secondary_contact: null,
+      additional_contacts: [],
     },
     {
       id: 'demo-r-4',
@@ -166,6 +201,8 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
         relationship: 'Daughter',
         notes: 'Primary point of contact.',
       },
+      secondary_contact: null,
+      additional_contacts: [],
     },
     {
       id: 'demo-r-5',
@@ -186,6 +223,8 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
       state: 'FL',
       important_notes: null,
       primary_contact: null,
+      secondary_contact: null,
+      additional_contacts: [],
     },
     {
       id: 'demo-r-6',
@@ -206,6 +245,8 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
       state: 'WA',
       important_notes: null,
       primary_contact: null,
+      secondary_contact: null,
+      additional_contacts: [],
     },
     {
       id: 'demo-r-7',
@@ -226,6 +267,8 @@ export function buildInitialDemoRecords(): DemoResidentRecord[] {
       state: 'CA',
       important_notes: null,
       primary_contact: null,
+      secondary_contact: null,
+      additional_contacts: [],
     },
   ];
 }

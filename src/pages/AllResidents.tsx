@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
-  Search,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -14,15 +13,14 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { formSelectOverrides } from '@/lib/formStyles';
-import { toInputDate, formatDateToAmerican } from '@/lib/dateUtils';
+import { formatDateToAmerican } from '@/lib/dateUtils';
 import { toSentenceCase } from '@/lib/textUtils';
-import StateSearchSelect from '@/components/StateSearchSelect';
 import Pagination from '@/components/Pagination';
+import PillSearchWithResults, { type PillSearchResultItem } from '@/components/PillSearchWithResults';
+import SearchNormalIcon from '@/components/SearchNormalIcon';
 import { BottomToast, type BottomToastPayload } from '@/components/BottomToast';
 import ResidentContactsTab from '@/components/ResidentContactsTab';
-import { ThemeDateTimePicker } from '@/components/ThemeDateTimePicker';
-import { SearchableFormSelect, type SearchableFormSelectOption } from '@/components/SearchableFormSelect';
+import ResidentFormSlidePanel from '@/components/ResidentFormSlidePanel';
 import { type DemoResidentRecord, toResidentSlug } from '@/lib/demoResidents';
 import { useDemoResidents } from '@/contexts/DemoResidentsContext';
 
@@ -85,14 +83,7 @@ interface Resident {
   status: string;
 }
 
-type CommunityOption = { id: string; name: string };
 type SpecialistOption = { id: string; email: string; display_name: string };
-
-const DUMMY_COMMUNITIES: CommunityOption[] = [
-  { id: 'demo-comm-1', name: 'Whitestone' },
-  { id: 'demo-comm-2', name: 'Harbor View' },
-  { id: 'demo-comm-3', name: 'Maple Ridge' },
-];
 
 const DUMMY_SPECIALISTS: SpecialistOption[] = [
   { id: 'demo-spec-1', email: 'jane.doe@example.com', display_name: 'Jane Doe' },
@@ -164,30 +155,35 @@ function recordToTableRow(r: DemoResidentRecord): Resident {
   };
 }
 
-const ADD_RESIDENT_RELATIONSHIP_OPTIONS: SearchableFormSelectOption[] = [
-  { value: 'Son', label: 'Son' },
-  { value: 'Daughter', label: 'Daughter' },
-  { value: 'Spouse', label: 'Spouse' },
-  { value: 'Sibling', label: 'Sibling' },
-  { value: 'Other', label: 'Other' },
-];
+function buildResidentPillResults(records: DemoResidentRecord[], q: string): PillSearchResultItem[] {
+  const t = q.trim().toLowerCase();
+  if (!t) return [];
+  const out: PillSearchResultItem[] = [];
+  for (const r of records) {
+    const row = recordToTableRow(r);
+    const nameL = row.name.toLowerCase();
+    const commL = row.community.toLowerCase();
+    if (nameL.includes(t)) {
+      out.push({ id: r.id, category: '[Resident Name]', title: row.name });
+    } else if (commL.includes(t)) {
+      out.push({ id: r.id, category: '[Community]', title: `${row.name} — ${row.community}` });
+    }
+    if (out.length >= 8) break;
+  }
+  return out;
+}
 
 export default function AllResidentsPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [selectedRow, setSelectedRow] = useState<string | null>(null);
-  const { records: demoRecords, setRecords: setDemoRecords } = useDemoResidents();
+  const { records: demoRecords } = useDemoResidents();
   const [isAddResidentModalOpen, setIsAddResidentModalOpen] = useState(false);
-  const [addResidentPanelEntered, setAddResidentPanelEntered] = useState(false);
   const [editingResidentId, setEditingResidentId] = useState<string | null>(null);
-  const [returnToResidentSlug, setReturnToResidentSlug] = useState<string | null>(null);
   const [searchExpanded, setSearchExpanded] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [mainTab, setMainTab] = useState<'residents' | 'contacts'>('residents');
   const [residentSaveToast, setResidentSaveToast] = useState<BottomToastPayload | null>(null);
 
@@ -203,51 +199,6 @@ export default function AllResidentsPage() {
   const filterPopoverRef = useRef<HTMLDivElement>(null);
   const contactsToolbarMountRef = useRef<HTMLDivElement>(null);
 
-  const [residentForm, setResidentForm] = useState({
-    relocationSpecialist: '',
-    firstName: '',
-    lastName: '',
-    address: '',
-    address2: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    email: '',
-    phone: '',
-    primaryContactFirstName: '',
-    primaryContactLastName: '',
-    primaryContactEmail: '',
-    primaryContactPhone: '',
-    primaryContactRelationship: '',
-    primaryContactNotes: '',
-    community: '',
-    moveInDate: '',
-    importantNotes: '',
-  });
-
-  const communitiesList = DUMMY_COMMUNITIES;
-  const specialistsList = DUMMY_SPECIALISTS;
-
-  const communitySearchOptions = useMemo(
-    () => communitiesList.map((c) => ({ value: c.id, label: c.name })),
-    [communitiesList],
-  );
-
-  const relocationSpecialistSearchOptions = useMemo(
-    () => specialistsList.map((s) => ({ value: s.id, label: s.display_name })),
-    [specialistsList],
-  );
-
-  // Slide-in animation for Add Resident panel
-  useEffect(() => {
-    if (isAddResidentModalOpen) {
-      const frame = requestAnimationFrame(() => setAddResidentPanelEntered(true));
-      return () => cancelAnimationFrame(frame);
-    } else {
-      setAddResidentPanelEntered(false);
-    }
-  }, [isAddResidentModalOpen]);
-
   // Open Add Resident panel when navigating from Dashboard with ?add=1
   useEffect(() => {
     const add = searchParams.get('add');
@@ -256,17 +207,6 @@ export default function AllResidentsPage() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
-
-  // Open Edit Resident panel when navigating from Resident Details (state from edit icons)
-  useEffect(() => {
-    const state = location.state as { editResidentId?: string; returnToResidentSlug?: string } | null;
-    if (state?.editResidentId && !isAddResidentModalOpen) {
-      setEditingResidentId(state.editResidentId);
-      setReturnToResidentSlug(state.returnToResidentSlug ?? null);
-      setIsAddResidentModalOpen(true);
-      navigate('/residents/all', { replace: true, state: {} });
-    }
-  }, [location.state, isAddResidentModalOpen, navigate]);
 
   useEffect(() => {
     if (!filterPopoverOpen) return;
@@ -329,175 +269,10 @@ export default function AllResidentsPage() {
     });
   };
 
-  const closeAddResidentPanel = () => {
-    const slug = returnToResidentSlug;
-    setAddResidentPanelEntered(false);
+  const handleResidentFormPanelClose = () => {
     setEditingResidentId(null);
-    setReturnToResidentSlug(null);
-    if (slug) navigate(`/residents/${slug}`);
-    setTimeout(() => {
-      setIsAddResidentModalOpen(false);
-      setResidentForm({
-        relocationSpecialist: '',
-        firstName: '',
-        lastName: '',
-        address: '',
-        address2: '',
-        city: '',
-        state: '',
-        zipCode: '',
-        email: '',
-        phone: '',
-        primaryContactFirstName: '',
-        primaryContactLastName: '',
-        primaryContactEmail: '',
-        primaryContactPhone: '',
-        primaryContactRelationship: '',
-        primaryContactNotes: '',
-        community: '',
-        moveInDate: '',
-        importantNotes: '',
-      });
-    }, 300);
+    setIsAddResidentModalOpen(false);
   };
-
-  // Prefill form from demo record when editing
-  useEffect(() => {
-    if (!isAddResidentModalOpen || !editingResidentId) return;
-    const data = demoRecords.find((row) => row.id === editingResidentId);
-    if (!data) return;
-    const r = data;
-    const pc = r.primary_contact;
-    setResidentForm({
-      relocationSpecialist: r.assigned_relocation_specialist_id ?? '',
-      firstName: r.first_name ?? '',
-      lastName: r.last_name ?? '',
-      address: r.address ?? '',
-      address2: r.address_2 ?? '',
-      city: r.city ?? '',
-      state: r.state ?? '',
-      zipCode: r.zip_code ?? '',
-      email: r.email ?? '',
-      phone: r.phone ?? '',
-      primaryContactFirstName: pc?.first_name ?? '',
-      primaryContactLastName: pc?.last_name ?? '',
-      primaryContactEmail: pc?.email ?? '',
-      primaryContactPhone: pc?.phone ?? '',
-      primaryContactRelationship: pc?.relationship ?? '',
-      primaryContactNotes: pc?.notes ?? '',
-      community: r.community_id ?? '',
-      moveInDate: r.move_in_date ? toInputDate(r.move_in_date) : '',
-      importantNotes: r.important_notes ?? '',
-    });
-  }, [isAddResidentModalOpen, editingResidentId, demoRecords]);
-
-  function handleSaveResident() {
-    const communityId = residentForm.community.trim();
-    const firstName = residentForm.firstName.trim();
-    const lastName = residentForm.lastName.trim();
-    if (!communityId) {
-      setSubmitError('Please select a community.');
-      return;
-    }
-    if (!firstName || !lastName) {
-      setSubmitError('First name and last name are required.');
-      return;
-    }
-    setSubmitting(true);
-    setSubmitError(null);
-
-    const specId = residentForm.relocationSpecialist.trim() || null;
-    const specName = specId
-      ? (DUMMY_SPECIALISTS.find((s) => s.id === specId)?.display_name ?? '—')
-      : '—';
-    const commName = DUMMY_COMMUNITIES.find((c) => c.id === communityId)?.name ?? '—';
-
-    const primaryPayload = {
-      first_name: residentForm.primaryContactFirstName.trim() || null,
-      last_name: residentForm.primaryContactLastName.trim() || null,
-      email: residentForm.primaryContactEmail.trim() || null,
-      phone: residentForm.primaryContactPhone.trim() || null,
-      relationship: residentForm.primaryContactRelationship.trim() || null,
-      notes: residentForm.primaryContactNotes.trim() || null,
-    };
-
-    const hasPrimary =
-      (primaryPayload.first_name ?? '') !== '' ||
-      (primaryPayload.last_name ?? '') !== '' ||
-      (primaryPayload.email ?? '') !== '' ||
-      (primaryPayload.phone ?? '') !== '';
-
-    try {
-      if (editingResidentId) {
-        setDemoRecords((prev) =>
-          prev.map((row) => {
-            if (row.id !== editingResidentId) return row;
-            const nextPc = hasPrimary
-              ? {
-                  id: row.primary_contact?.id ?? `demo-pc-${editingResidentId}`,
-                  ...primaryPayload,
-                }
-              : row.primary_contact;
-            return {
-              ...row,
-              first_name: firstName,
-              last_name: lastName,
-              community_id: communityId,
-              community_name: commName,
-              assigned_relocation_specialist_id: specId,
-              relocation_specialist_display: specName,
-              zip_code: residentForm.zipCode.trim() || null,
-              move_in_date: residentForm.moveInDate.trim() || null,
-              important_notes: residentForm.importantNotes.trim() || null,
-              email: residentForm.email.trim() || null,
-              phone: residentForm.phone.trim() || null,
-              address: residentForm.address.trim() || null,
-              address_2: residentForm.address2.trim() || null,
-              city: residentForm.city.trim() || null,
-              state: residentForm.state.trim() || null,
-              primary_contact: nextPc,
-            };
-          }),
-        );
-      } else {
-        const newId = `demo-r-${Date.now()}`;
-        setDemoRecords((prev) => [
-          ...prev,
-          {
-            id: newId,
-            first_name: firstName,
-            last_name: lastName,
-            community_id: communityId,
-            community_name: commName,
-            assigned_relocation_specialist_id: specId,
-            relocation_specialist_display: specName,
-            zip_code: residentForm.zipCode.trim() || null,
-            move_in_date: residentForm.moveInDate.trim() || null,
-            status: 'pending',
-            email: residentForm.email.trim() || null,
-            phone: residentForm.phone.trim() || null,
-            address: residentForm.address.trim() || null,
-            address_2: residentForm.address2.trim() || null,
-            city: residentForm.city.trim() || null,
-            state: residentForm.state.trim() || null,
-            important_notes: residentForm.importantNotes.trim() || null,
-            primary_contact: hasPrimary
-              ? { id: `demo-pc-${newId}`, ...primaryPayload }
-              : null,
-          },
-        ]);
-      }
-      closeAddResidentPanel();
-      setResidentSaveToast({
-        message: editingResidentId
-          ? 'Resident successfully updated'
-          : 'New resident successfully added',
-        variant: 'success',
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   const getStatusBgColor = (status: string): string => {
     const key = (status ?? '').toLowerCase().replace(/\s+/g, '_');
@@ -534,45 +309,6 @@ export default function AllResidentsPage() {
     letterSpacing: '0%',
     color: '#FFFFFF',
   });
-
-  // Add Resident form styles
-  const formSectionHeaderStyle: React.CSSProperties = {
-    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-    fontWeight: 600,
-    fontSize: 20,
-    lineHeight: '24px',
-    letterSpacing: '0%',
-    verticalAlign: 'middle',
-    color: '#000000',
-  };
-  const formLabelStyle: React.CSSProperties = {
-    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-    fontWeight: 600,
-    fontSize: 18,
-    lineHeight: '20px',
-    letterSpacing: '0%',
-    verticalAlign: 'middle',
-    color: '#323234',
-  };
-  const formInputStyle: React.CSSProperties = {
-    width: '100%',
-    maxWidth: 335,
-    height: 48,
-    borderRadius: 8,
-    border: '1px solid #d1d5db',
-    padding: 16,
-    gap: 8,
-    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-    fontWeight: 500,
-    fontSize: 18,
-    lineHeight: '20px',
-    letterSpacing: '0%',
-    color: '#323234',
-  };
-  const formSelectStyle: React.CSSProperties = {
-    ...formInputStyle,
-    ...formSelectOverrides,
-  };
 
   const handleSort = (field: 'name' | 'community') => {
     if (sortField === field) {
@@ -611,6 +347,11 @@ export default function AllResidentsPage() {
     appliedFilterStatusKeys,
   ]);
 
+  const residentPillResults = useMemo(
+    () => buildResidentPillResults(demoRecords, searchQuery),
+    [demoRecords, searchQuery],
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
           {/* Mobile/Tablet Header */}
@@ -634,8 +375,8 @@ export default function AllResidentsPage() {
               }}
             >
               {/* Tabs + actions — toolbar full-width below tabs on smaller screens so filter chips can wrap */}
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-3">
-                <div className="flex min-w-0 flex-shrink-0 items-center">
+              <div className="flex min-w-0 shrink-0 flex-nowrap items-center justify-between gap-3">
+                <div className="flex shrink-0 items-center">
                   <button
                     type="button"
                     onClick={() => setMainTab('residents')}
@@ -661,7 +402,10 @@ export default function AllResidentsPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setMainTab('contacts')}
+                    onClick={() => {
+                      setMainTab('contacts');
+                      setSearchExpanded(false);
+                    }}
                     className="font-source-sans-3 border-b-2 border-transparent bg-transparent pb-2 pt-1 transition-colors"
                     style={{
                       fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
@@ -682,7 +426,7 @@ export default function AllResidentsPage() {
                 {mainTab === 'residents' && (
                   <div
                     ref={filterPopoverRef}
-                    className="relative flex w-full min-w-0 basis-full flex-col items-end gap-2 lg:basis-auto lg:w-auto lg:max-w-none lg:flex-1 lg:flex-row lg:flex-wrap lg:items-center lg:justify-end"
+                    className="relative flex min-w-0 w-full flex-col items-end gap-2 overflow-visible lg:w-auto lg:max-w-none lg:flex-1 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-end"
                     style={{ columnGap: 18, rowGap: 8 }}
                   >
                     {(appliedFilterSpecialistIds.size > 0 || appliedFilterStatusKeys.size > 0) && (
@@ -759,11 +503,11 @@ export default function AllResidentsPage() {
                         })}
                       </div>
                     )}
-                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-[18px]">
+                    <div className="flex min-w-0 shrink-0 flex-nowrap items-center justify-end gap-[18px] overflow-visible">
                     <button
                       type="button"
                       onClick={() => (filterPopoverOpen ? setFilterPopoverOpen(false) : openFilterPopover())}
-                      className={`rounded-lg p-2 transition-colors hover:bg-gray-100 ${
+                      className={`shrink-0 rounded-lg p-2 transition-colors hover:bg-gray-100 ${
                         filterPopoverOpen || appliedFilterSpecialistIds.size > 0 || appliedFilterStatusKeys.size > 0
                           ? 'bg-gray-100'
                           : ''
@@ -965,31 +709,28 @@ export default function AllResidentsPage() {
                       <button
                         type="button"
                         onClick={() => setSearchExpanded(true)}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="shrink-0 rounded-lg p-2 transition-colors hover:bg-gray-100"
                         aria-label="Open search"
                       >
-                        <Search size={20} strokeWidth={1.5} className="text-gray-600" />
+                        <SearchNormalIcon size={22} />
                       </button>
                     ) : (
-                      <div className="flex items-center relative w-[240px]">
-                        <Search size={18} className="absolute left-3 text-gray-500 pointer-events-none flex-shrink-0" />
-                        <input
-                          type="text"
-                          placeholder="Search residents..."
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          autoFocus
-                          className="w-full h-9 pl-9 pr-9 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 text-sm font-source-sans-3"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setSearchExpanded(false)}
-                          className="absolute right-2 p-1 hover:bg-gray-100 rounded"
-                          aria-label="Close search"
-                        >
-                          <X size={16} className="text-gray-500" />
-                        </button>
-                      </div>
+                      <PillSearchWithResults
+                        placeholder="Search for Resident"
+                        value={searchQuery}
+                        onChange={setSearchQuery}
+                        results={residentPillResults}
+                        accentColor="#307584"
+                        isExpanded={searchExpanded}
+                        onDismiss={() => setSearchExpanded(false)}
+                        onResultSelect={(item) => {
+                          const rec = demoRecords.find((r) => r.id === item.id);
+                          if (!rec) return;
+                          const row = recordToTableRow(rec);
+                          if (item.category === '[Resident Name]') setSearchQuery(row.name);
+                          else setSearchQuery(row.community);
+                        }}
+                      />
                     )}
                     <button
                       type="button"
@@ -997,9 +738,8 @@ export default function AllResidentsPage() {
                         setEditingResidentId(null);
                         setIsAddResidentModalOpen(true);
                       }}
-                      className="flex items-center justify-center transition-opacity hover:opacity-90 font-source-sans-3"
+                      className="flex shrink-0 items-center justify-center transition-opacity hover:opacity-90 font-source-sans-3"
                       style={{
-                        width: 200,
                         height: 48,
                         minWidth: 48,
                         opacity: 1,
@@ -1693,461 +1433,13 @@ export default function AllResidentsPage() {
             </div>
           </div>
 
-      {/* Add Resident – sliding panel with dimmed backdrop */}
       {isAddResidentModalOpen && (
-        <>
-          {/* Dimmed backdrop */}
-          <div
-            className="fixed inset-0 bg-black/50 z-40 transition-opacity duration-300"
-            style={{ opacity: addResidentPanelEntered ? 1 : 0 }}
-            onClick={closeAddResidentPanel}
-            aria-hidden="true"
-          />
-          {/* Sliding panel from the right */}
-          <div
-            className={`fixed right-0 top-0 bottom-0 h-full w-full max-w-2xl lg:max-w-3xl bg-white shadow-2xl z-50 overflow-y-auto transition-transform duration-300 ease-out ${
-              addResidentPanelEntered ? 'translate-x-0' : 'translate-x-full'
-            }`}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="add-resident-title"
-          >
-            {/* Panel Header (no divider under header) */}
-            <div className="flex items-center justify-between p-4 md:p-6 sticky top-0 bg-white z-10">
-              <div className="flex items-center gap-3 md:gap-4">
-                <button
-                  type="button"
-                  onClick={closeAddResidentPanel}
-                  className="p-1 hover:bg-gray-100 rounded"
-                  aria-label="Close"
-                >
-                  <X size={20} className="text-gray-600" />
-                </button>
-                <h2
-                  id="add-resident-title"
-                  className="font-source-sans-3"
-                  style={{
-                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-                    fontWeight: 600,
-                    fontSize: 24,
-                    lineHeight: '28px',
-                    letterSpacing: '0%',
-                    color: '#323234',
-                  }}
-                >
-                  {editingResidentId ? 'Edit Resident' : 'Add Resident'}
-                </h2>
-              </div>
-              <div className="hidden md:flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={closeAddResidentPanel}
-                  className="flex items-center justify-center font-source-sans-3 transition-opacity hover:opacity-90"
-                  style={{
-                    width: 94,
-                    height: 48,
-                    minWidth: 48,
-                    opacity: 1,
-                    borderRadius: 9999,
-                    border: '1px solid #83ACB5',
-                    gap: 8,
-                    paddingTop: 10,
-                    paddingRight: 24,
-                    paddingBottom: 10,
-                    paddingLeft: 24,
-                    backgroundColor: '#EAF1F3',
-                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-                    fontWeight: 500,
-                    fontSize: 16,
-                    lineHeight: '22px',
-                    letterSpacing: '0%',
-                    color: '#307584',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveResident}
-                  disabled={submitting}
-                  className="flex items-center justify-center font-source-sans-3 transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{
-                    width: 81,
-                    height: 48,
-                    minWidth: 48,
-                    opacity: 1,
-                    borderRadius: 9999,
-                    gap: 8,
-                    paddingTop: 10,
-                    paddingRight: 24,
-                    paddingBottom: 10,
-                    paddingLeft: 24,
-                    backgroundColor: '#307584',
-                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-                    fontWeight: 500,
-                    fontSize: 16,
-                    lineHeight: '22px',
-                    letterSpacing: '0%',
-                    color: '#FFFFFF',
-                  }}
-                >
-                  {submitting ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-
-            {/* Panel Content */}
-            <div className="p-4 md:p-6 space-y-4 md:space-y-6">
-              {submitError && (
-                <div className="text-red-600 font-source-sans-3 text-sm" role="alert">
-                  {submitError}
-                </div>
-              )}
-              {/* Assigned Relocation Specialist */}
-              <div>
-                <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                  Relocation Specialist
-                </label>
-                <SearchableFormSelect
-                  value={residentForm.relocationSpecialist}
-                  onChange={(v) => setResidentForm({ ...residentForm, relocationSpecialist: v })}
-                  options={relocationSpecialistSearchOptions}
-                  placeholder="Select Relocation Specialist"
-                  disabled={submitting}
-                  emptyMessage="No specialists match."
-                  style={{ ...formInputStyle, ...formSelectOverrides }}
-                  inputClassName="placeholder:text-lg"
-                />
-              </div>
-
-              {/* Resident Information */}
-              <div>
-                <h3 className="mb-3 md:mb-4 font-source-sans-3" style={formSectionHeaderStyle}>Resident Information</h3>
-                <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input First Name"
-                      value={residentForm.firstName}
-                      onChange={(e) => setResidentForm({ ...residentForm, firstName: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input Last Name"
-                      value={residentForm.lastName}
-                      onChange={(e) => setResidentForm({ ...residentForm, lastName: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Address
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input Street Address"
-                      value={residentForm.address}
-                      onChange={(e) => setResidentForm({ ...residentForm, address: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Address 2 (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input Address Line 2"
-                      value={residentForm.address2}
-                      onChange={(e) => setResidentForm({ ...residentForm, address2: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      City
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input City"
-                      value={residentForm.city}
-                      onChange={(e) => setResidentForm({ ...residentForm, city: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      State
-                    </label>
-                    <StateSearchSelect
-                      value={residentForm.state}
-                      onChange={(next) => setResidentForm({ ...residentForm, state: next })}
-                      placeholder="Select State"
-                      className="w-full pr-10 font-source-sans-3 placeholder:text-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 bg-white"
-                      style={{ ...formSelectStyle, color: residentForm.state ? '#323234' : '#ACACAD' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Zip Code
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input Zip Code"
-                      value={residentForm.zipCode}
-                      onChange={(e) => setResidentForm({ ...residentForm, zipCode: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="Input Email"
-                      value={residentForm.email}
-                      onChange={(e) => setResidentForm({ ...residentForm, email: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="Input Phone"
-                      value={residentForm.phone}
-                      onChange={(e) => setResidentForm({ ...residentForm, phone: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Primary Resident Contact Information */}
-              <div>
-                <h3 className="mb-3 md:mb-4 font-source-sans-3" style={formSectionHeaderStyle}>Primary Resident Contact Information</h3>
-                <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input First Name"
-                      value={residentForm.primaryContactFirstName}
-                      onChange={(e) => setResidentForm({ ...residentForm, primaryContactFirstName: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Input Last Name"
-                      value={residentForm.primaryContactLastName}
-                      onChange={(e) => setResidentForm({ ...residentForm, primaryContactLastName: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="Input Email"
-                      value={residentForm.primaryContactEmail}
-                      onChange={(e) => setResidentForm({ ...residentForm, primaryContactEmail: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="Input Phone"
-                      value={residentForm.primaryContactPhone}
-                      onChange={(e) => setResidentForm({ ...residentForm, primaryContactPhone: e.target.value })}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5"
-                      style={formInputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Relationship
-                    </label>
-                    <SearchableFormSelect
-                      value={residentForm.primaryContactRelationship}
-                      onChange={(v) =>
-                        setResidentForm({ ...residentForm, primaryContactRelationship: v })
-                      }
-                      options={ADD_RESIDENT_RELATIONSHIP_OPTIONS}
-                      placeholder="Select Relationship"
-                      disabled={submitting}
-                      emptyMessage="No relationships match."
-                      style={{ ...formInputStyle, ...formSelectOverrides }}
-                      inputClassName="placeholder:text-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Notes
-                    </label>
-                    <textarea
-                      placeholder="Kenra handles most of the things..."
-                      value={residentForm.primaryContactNotes}
-                      onChange={(e) => setResidentForm({ ...residentForm, primaryContactNotes: e.target.value })}
-                      rows={3}
-                      className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-lg placeholder:leading-5 resize-y"
-                      style={{ ...formInputStyle, height: 'auto', minHeight: 48 }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Community Information */}
-              <div>
-                <h3 className="mb-3 md:mb-4 font-source-sans-3" style={formSectionHeaderStyle}>Community Information</h3>
-                <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
-                  <div>
-                    <label className="block mb-2 font-source-sans-3" style={formLabelStyle}>
-                      Community
-                    </label>
-                    <SearchableFormSelect
-                      value={residentForm.community}
-                      onChange={(v) => setResidentForm({ ...residentForm, community: v })}
-                      options={communitySearchOptions}
-                      placeholder="Select Community"
-                      disabled={submitting}
-                      emptyMessage="No communities match."
-                      style={{ ...formInputStyle, ...formSelectOverrides }}
-                      inputClassName="placeholder:text-lg"
-                    />
-                  </div>
-                  <div>
-                    <ThemeDateTimePicker
-                      id="resident-move-in-date"
-                      label="Move in Date (mm/dd/yyyy)"
-                      dateOnly
-                      value={
-                        (() => {
-                          const d = toInputDate(residentForm.moveInDate);
-                          return d ? `${d}T00:00` : '';
-                        })()
-                      }
-                      onChange={(v) =>
-                        setResidentForm({
-                          ...residentForm,
-                          moveInDate: v.trim() ? v.split('T')[0] : '',
-                        })
-                      }
-                      emptyLabel="mm/dd/yyyy"
-                      allowClear
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Important Notes */}
-              <div>
-                <h3 className="mb-3 md:mb-4 font-source-sans-3" style={formSectionHeaderStyle}>Important Notes</h3>
-                <textarea
-                  placeholder="Input important resident notes here"
-                  value={residentForm.importantNotes}
-                  onChange={(e) => setResidentForm({ ...residentForm, importantNotes: e.target.value })}
-                  rows={5}
-                  className="w-full focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 font-source-sans-3 placeholder:text-[#ACACAD] placeholder:font-medium placeholder:text-base placeholder:leading-5 resize-y"
-                  style={{ ...formInputStyle, height: 'auto', minHeight: 120 }}
-                />
-              </div>
-
-              {/* Mobile Footer Buttons */}
-              <div className="md:hidden flex items-center justify-end gap-3 pt-4 border-t border-gray-200 sticky bottom-0 bg-white pb-4">
-                <button
-                  type="button"
-                  onClick={closeAddResidentPanel}
-                  className="flex items-center justify-center font-source-sans-3 transition-opacity hover:opacity-90"
-                  style={{
-                    width: 94,
-                    height: 48,
-                    minWidth: 48,
-                    opacity: 1,
-                    borderRadius: 9999,
-                    border: '1px solid #83ACB5',
-                    gap: 8,
-                    paddingTop: 10,
-                    paddingRight: 24,
-                    paddingBottom: 10,
-                    paddingLeft: 24,
-                    backgroundColor: '#EAF1F3',
-                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-                    fontWeight: 500,
-                    fontSize: 16,
-                    lineHeight: '22px',
-                    letterSpacing: '0%',
-                    color: '#307584',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveResident}
-                  disabled={submitting}
-                  className="flex items-center justify-center font-source-sans-3 transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{
-                    width: 81,
-                    height: 48,
-                    minWidth: 48,
-                    opacity: 1,
-                    borderRadius: 9999,
-                    gap: 8,
-                    paddingTop: 10,
-                    paddingRight: 24,
-                    paddingBottom: 10,
-                    paddingLeft: 24,
-                    backgroundColor: '#307584',
-                    fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-                    fontWeight: 500,
-                    fontSize: 16,
-                    lineHeight: '22px',
-                    letterSpacing: '0%',
-                    color: '#FFFFFF',
-                  }}
-                >
-                  {submitting ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </>
+        <ResidentFormSlidePanel
+          open={isAddResidentModalOpen}
+          onClose={handleResidentFormPanelClose}
+          editingResidentId={editingResidentId}
+          onSaveSuccess={setResidentSaveToast}
+        />
       )}
       {residentSaveToast && (
         <BottomToast

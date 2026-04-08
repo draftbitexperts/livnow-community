@@ -3,6 +3,8 @@ import { useAuth } from '@/hooks/useAuth';
 import LoginPage from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import AllResidents from '@/pages/AllResidents';
+import AllCommunities from '@/pages/AllCommunities';
+import ParentCompanyDetail from '@/pages/ParentCompanyDetail';
 import ResidentDetail from '@/pages/ResidentDetail';
 import ComingSoon from '@/pages/ComingSoon';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -44,7 +46,8 @@ function App() {
           <Route path="profile" element={<ComingSoon />} />
           <Route path="residents/all" element={<AllResidents />} />
           <Route path="residents/:residentId" element={<ResidentDetail />} />
-          <Route path="communities" element={<ComingSoon />} />
+          <Route path="communities" element={<AllCommunities />} />
+          <Route path="communities/parent-companies/:parentId" element={<ParentCompanyDetail />} />
           <Route path="knowledge-base" element={<ComingSoon />} />
           <Route path="team" element={<ComingSoon />} />
         </Route>

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Search, Bell, ChevronRight } from 'lucide-react';
+import { Menu, Bell, ChevronRight } from 'lucide-react';
+import SearchNormalIcon from '@/components/SearchNormalIcon';
 import { useAuth } from '@/hooks/useAuth';
 import { useSidebarLayout } from '@/contexts/SidebarLayoutContext';
 import { useDemoResidents } from '@/contexts/DemoResidentsContext';
 import { findDemoResidentInList, residentDisplayName } from '@/lib/demoResidents';
+import { DEMO_PARENT_COMPANIES } from '@/lib/demoCommunities';
+import type { ParentCompanyDetailLocationState } from '@/pages/ParentCompanyDetail';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -41,7 +44,25 @@ export default function Header({
         })()
       : undefined;
 
-  const effectiveBreadcrumb = breadcrumb ?? residentBreadcrumb;
+  const parentDetailMatch = location.pathname.match(/^\/communities\/parent-companies\/([^/]+)$/);
+  const parentDetailBreadcrumb =
+    parentDetailMatch != null
+      ? (() => {
+          const id = parentDetailMatch[1];
+          const st = location.state as ParentCompanyDetailLocationState | null;
+          const name =
+            st?.parentCompanyRecord?.id === id
+              ? st.parentCompanyRecord.name
+              : (DEMO_PARENT_COMPANIES.find((p) => p.id === id)?.name ?? 'Parent Company');
+          return {
+            parentLabel: 'All Parent Companies',
+            parentHref: '/communities?tab=parentCompanies',
+            currentLabel: name,
+          };
+        })()
+      : undefined;
+
+  const effectiveBreadcrumb = breadcrumb ?? residentBreadcrumb ?? parentDetailBreadcrumb;
 
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -64,7 +85,7 @@ export default function Header({
   const pageTitle = (() => {
     const path = location.pathname;
     if (path === '/residents/all' || path.startsWith('/residents/')) return 'Residents';
-    if (path === '/communities') return 'Communities';
+    if (path === '/communities' || path.startsWith('/communities/parent-companies/')) return 'Communities';
     if (path === '/team') return 'Team';
     if (path === '/knowledge-base') return 'Knowledge Base';
     if (path === '/profile') return 'User Profile';
@@ -118,7 +139,7 @@ export default function Header({
           className="rounded p-2 transition-opacity hover:opacity-80"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
         >
-          <Search size={20} />
+          <SearchNormalIcon size={20} />
         </button>
       </header>
     );
@@ -144,7 +165,7 @@ export default function Header({
           className="rounded p-2 transition-opacity hover:opacity-80"
           style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
         >
-          <Search size={20} />
+          <SearchNormalIcon size={20} />
         </button>
       </header>
     );
@@ -270,8 +291,8 @@ export default function Header({
               style={{ borderRadius: '360px' }}
               aria-label="Search"
             />
-            <button type="button" className="absolute right-4 p-2">
-              <Search size={20} className="text-gray-600" />
+            <button type="button" className="absolute right-3 flex items-center justify-center p-2" aria-label="Search">
+              <SearchNormalIcon size={22} />
             </button>
           </div>
           <button

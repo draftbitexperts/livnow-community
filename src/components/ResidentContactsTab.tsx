@@ -12,7 +12,6 @@ import { createPortal } from 'react-dom';
 import type { NavigateFunction } from 'react-router-dom';
 import {
   Plus,
-  Search,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -27,6 +26,8 @@ import { formSelectOverrides } from '@/lib/formStyles';
 import Pagination from '@/components/Pagination';
 import { BottomToast } from '@/components/BottomToast';
 import { SearchableFormSelect, type SearchableFormSelectOption } from '@/components/SearchableFormSelect';
+import SearchNormalIcon from '@/components/SearchNormalIcon';
+import PillSearchWithResults, { type PillSearchResultItem } from '@/components/PillSearchWithResults';
 import { toResidentSlug } from '@/lib/demoResidents';
 
 /** Filter icon — same as All Residents */
@@ -200,6 +201,37 @@ function recordMatchesContactFilters(
   if (residentIds.size > 0 && !residentIds.has(c.resident_id)) return false;
   if (roleKeys.size > 0 && !roleKeys.has(c.role_key)) return false;
   return true;
+}
+
+function buildContactPillResults(
+  list: DemoContactRecord[],
+  q: string,
+  residentById: Map<string, ContactResidentPickerRow>,
+  residentDisplayName: (id: string) => string,
+): PillSearchResultItem[] {
+  const t = q.trim().toLowerCase();
+  if (!t) return [];
+  const out: PillSearchResultItem[] = [];
+  for (const c of list) {
+    const contactName = `${c.first_name} ${c.last_name}`.trim() || '—';
+    const resName = residentDisplayName(c.resident_id);
+    const comm = residentById.get(c.resident_id)?.community_name ?? '';
+    const contactNameL = contactName.toLowerCase();
+    const resNameL = resName.toLowerCase();
+    const commL = comm.toLowerCase();
+    const relL = c.relationship.toLowerCase();
+    if (contactNameL.includes(t)) {
+      out.push({ id: c.id, category: '[Contact Name]', title: contactName });
+    } else if (resNameL.includes(t)) {
+      out.push({ id: c.id, category: '[Resident]', title: `${contactName} — ${resName}` });
+    } else if (commL.includes(t)) {
+      out.push({ id: c.id, category: '[Community]', title: `${contactName} — ${comm}` });
+    } else if (relL.includes(t)) {
+      out.push({ id: c.id, category: '[Relationship]', title: `${contactName} (${c.relationship})` });
+    }
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 
 const formSectionHeaderStyle: CSSProperties = {
@@ -454,6 +486,11 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
     residentDisplayName,
   ]);
 
+  const contactPillResults = useMemo(
+    () => buildContactPillResults(contacts, searchQuery, residentById, residentDisplayName),
+    [contacts, searchQuery, residentById, residentDisplayName],
+  );
+
   const openAddPanel = () => {
     setEditingId(null);
     setFieldErrors({});
@@ -594,7 +631,7 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
   const toolbarRow = (
     <div
       ref={filterRef}
-      className="relative flex w-full min-w-0 flex-col items-end gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-end"
+      className="relative flex min-w-0 w-full flex-col items-end gap-2 overflow-visible lg:flex-1 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-end"
       style={{ columnGap: 18, rowGap: 8 }}
     >
       {(appliedResidentIds.size > 0 || appliedRoleKeys.size > 0) && (
@@ -650,11 +687,11 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
           })}
         </div>
       )}
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-[18px]">
+      <div className="flex min-w-0 shrink-0 flex-nowrap items-center justify-end gap-[18px] overflow-visible">
       <button
         type="button"
         onClick={() => (filterPopoverOpen ? setFilterPopoverOpen(false) : openFilter())}
-        className={`rounded-lg p-2 transition-colors hover:bg-gray-100 ${
+        className={`shrink-0 rounded-lg p-2 transition-colors hover:bg-gray-100 ${
           filterPopoverOpen || appliedResidentIds.size > 0 || appliedRoleKeys.size > 0 ? 'bg-gray-100' : ''
         }`}
         style={{
@@ -827,38 +864,38 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
         <button
           type="button"
           onClick={() => setSearchExpanded(true)}
-          className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-gray-100"
+          className="shrink-0 rounded-lg p-2 transition-colors hover:bg-gray-100"
           aria-label="Open search"
         >
-          <Search size={20} strokeWidth={1.5} />
+          <SearchNormalIcon size={22} />
         </button>
       ) : (
-        <div className="relative flex w-[240px] items-center">
-          <Search size={18} className="pointer-events-none absolute left-3 flex-shrink-0 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search contacts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            autoFocus
-            className="h-9 w-full rounded-lg border border-gray-300 py-2 pl-9 pr-9 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500 font-source-sans-3"
-          />
-          <button
-            type="button"
-            onClick={() => setSearchExpanded(false)}
-            className="absolute right-2 rounded p-1 hover:bg-gray-100"
-            aria-label="Close search"
-          >
-            <X size={16} className="text-gray-500" />
-          </button>
-        </div>
+        <PillSearchWithResults
+          placeholder="Search for Contact"
+          value={searchQuery}
+          onChange={setSearchQuery}
+          results={contactPillResults}
+          accentColor="#307584"
+          isExpanded={searchExpanded}
+          onDismiss={() => setSearchExpanded(false)}
+          onResultSelect={(item) => {
+            const c = contacts.find((x) => x.id === item.id);
+            if (!c) return;
+            const contactName = `${c.first_name} ${c.last_name}`.trim();
+            const resName = residentDisplayName(c.resident_id);
+            const comm = residentById.get(c.resident_id)?.community_name ?? '';
+            if (item.category === '[Contact Name]') setSearchQuery(contactName);
+            else if (item.category === '[Resident]') setSearchQuery(resName);
+            else if (item.category === '[Community]') setSearchQuery(comm);
+            else setSearchQuery(c.relationship);
+          }}
+        />
       )}
       <button
         type="button"
         onClick={openAddPanel}
-        className="flex items-center justify-center font-source-sans-3 transition-opacity hover:opacity-90"
+        className="flex shrink-0 items-center justify-center font-source-sans-3 transition-opacity hover:opacity-90"
         style={{
-          width: 200,
           height: 48,
           minWidth: 48,
           borderRadius: 9999,
