@@ -432,12 +432,14 @@ function MoveItem({
 }
 
 function UpdateItem({
+  residentId,
   name,
   date,
   description,
   community,
   isLast,
 }: {
+  residentId?: string;
   name: string;
   date: string;
   description: string;
@@ -454,12 +456,16 @@ function UpdateItem({
     setIsClamped(el.scrollHeight > el.clientHeight + 1);
   }, [description]);
 
-  return (
-    <div
-      className={`flex items-stretch gap-3 px-4 py-3.5 font-source-sans-3 ${
-        !isLast ? 'border-b border-gray-200' : ''
-      }`}
-    >
+  const rowClass = `flex items-stretch gap-3 px-4 py-3.5 font-source-sans-3 no-underline text-inherit ${
+    !isLast ? 'border-b border-gray-200' : ''
+  } ${
+    residentId
+      ? 'cursor-pointer transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]'
+      : ''
+  }`;
+
+  const body = (
+    <>
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
           <p className="text-sm font-bold text-gray-900">{name}</p>
@@ -480,7 +486,7 @@ function UpdateItem({
           </p>
           {descHover && isClamped && (
             <div
-              className="absolute left-0 top-full z-50 -mt-0.5 max-w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-lg"
+              className="pointer-events-none absolute left-0 top-full z-50 -mt-0.5 max-w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-lg"
               role="tooltip"
             >
               <p className="text-sm font-bold text-gray-900">Community updates description</p>
@@ -493,8 +499,22 @@ function UpdateItem({
       <div className="flex shrink-0 items-center self-center">
         <ChevronRight size={18} className="text-gray-500" strokeWidth={2} aria-hidden />
       </div>
-    </div>
+    </>
   );
+
+  if (residentId) {
+    return (
+      <Link
+        to={`/residents/${encodeURIComponent(residentId)}`}
+        className={rowClass}
+        aria-label={`View resident profile for ${name}`}
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return <div className={rowClass}>{body}</div>;
 }
 
 function TeamMember({
@@ -956,6 +976,7 @@ export default function Dashboard() {
 
   const updates = [
     {
+      residentId: 'demo-r-8',
       name: 'Shirley Cook',
       date: '04/03/2026',
       description:
@@ -963,17 +984,19 @@ export default function Dashboard() {
       community: 'Riddle Village Retirement Community',
     },
     {
+      residentId: 'demo-r-9',
       name: 'Maria Garcia',
       date: '04/02/2026',
       description: 'Brief update — paperwork complete.',
       community: 'Penick Village',
     },
     {
+      residentId: 'demo-r-4',
       name: 'James Wilson',
       date: '04/01/2026',
       description:
         'Follow-up required on insurance documentation before the final walkthrough. Team to call resident by end of week with checklist and preferred vendor list for minor repairs.',
-      community: 'King-Bruwaert House',
+      community: 'Maple Ridge',
     },
   ];
 

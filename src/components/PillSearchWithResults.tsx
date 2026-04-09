@@ -34,7 +34,7 @@ type PillSearchWithResultsProps = {
   accentColor?: string;
   className?: string;
   'aria-label'?: string;
-  /** When set, shows a trailing control to collapse the toolbar without clearing `value` (list pages). */
+  /** Collapses the expanded search; when used, the dismiss (X) control also clears the query via `onChange('')`. */
   onDismiss?: () => void;
   /** When true, focuses the input (e.g. right after expanding from the icon button). */
   isExpanded?: boolean;
@@ -83,6 +83,7 @@ export default function PillSearchWithResults({
 
   const handleDismiss = () => {
     setPanelOpen(false);
+    onChange('');
     onDismiss?.();
   };
 
@@ -180,19 +181,21 @@ export default function PillSearchWithResults({
               ))}
             </ul>
           )}
-          <div className="mt-4 flex justify-end border-t border-gray-100 pt-3">
-            <button
-              type="button"
-              onClick={handleSearchButton}
-              className={`rounded-full px-6 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 ${fontSans}`}
-              style={{
-                backgroundColor: accentColor,
-                fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
-              }}
-            >
-              Search
-            </button>
-          </div>
+          {onSearchButton != null && (
+            <div className="mt-4 flex justify-end border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={handleSearchButton}
+                className={`rounded-full px-6 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 ${fontSans}`}
+                style={{
+                  backgroundColor: accentColor,
+                  fontFamily: 'var(--font-source-sans-3), Source Sans 3, sans-serif',
+                }}
+              >
+                Search
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

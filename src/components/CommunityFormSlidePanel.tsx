@@ -131,6 +131,8 @@ export type CommunityFormSlidePanelProps = {
   communitiesList: DemoCommunityRecord[];
   /** When set, panel loads this community for editing. */
   editingCommunityId?: string | null;
+  /** Add mode: pre-select parent company (e.g. parent company detail page). */
+  defaultParentCompanyId?: string | null;
   onAdd: (row: DemoCommunityRecord) => void;
   onUpdate?: (row: DemoCommunityRecord) => void;
   /** Edit mode: leave form and return to read-only community drawer (Cancel / X / backdrop). */
@@ -143,6 +145,7 @@ export default function CommunityFormSlidePanel({
   onSaveSuccess,
   communitiesList,
   editingCommunityId = null,
+  defaultParentCompanyId = null,
   onAdd,
   onUpdate,
   onExitEdit,
@@ -196,11 +199,14 @@ export default function CommunityFormSlidePanel({
     if (editingCommunityId) return;
     const first = newContactRow();
     setContacts([first]);
-    setForm(emptyCommunityForm());
+    setForm({
+      ...emptyCommunityForm(),
+      parentCompanyId: (defaultParentCompanyId ?? '').trim(),
+    });
     setExistingAttachments([]);
     setAttachmentFiles([]);
     setSubmitError(null);
-  }, [open, editingCommunityId]);
+  }, [open, editingCommunityId, defaultParentCompanyId]);
 
   useEffect(() => {
     if (!open || !editingCommunityId) return;

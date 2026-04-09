@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   ArrowUpDown,
@@ -23,6 +23,7 @@ import {
 } from '@/lib/demoCommunities';
 import CommunityFormSlidePanel from '@/components/CommunityFormSlidePanel';
 import CommunityViewDrawer from '@/components/CommunityViewDrawer';
+import type { ParentCompanyDetailLocationState } from '@/pages/ParentCompanyDetail';
 import ParentCompanyFormSlidePanel from '@/components/ParentCompanyFormSlidePanel';
 import ParentCompanyViewDrawer from '@/components/ParentCompanyViewDrawer';
 import { BottomToast, type BottomToastPayload } from '@/components/BottomToast';
@@ -217,7 +218,8 @@ function parentSortCompare(
 }
 
 export default function AllCommunitiesPage() {
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mainTab, setMainTab] = useState<'communities' | 'parentCompanies'>('communities');
 
   useEffect(() => {
@@ -231,6 +233,22 @@ export default function AllCommunitiesPage() {
     ...DEMO_PARENT_COMPANIES,
   ]);
   const [addCommunityOpen, setAddCommunityOpen] = useState(false);
+
+  useEffect(() => {
+    const add = searchParams.get('add');
+    if (add !== '1' && add !== 'true') return;
+    setMainTab('communities');
+    setAddCommunityOpen(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('add');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
+
   const [editCommunityId, setEditCommunityId] = useState<string | null>(null);
   const [parentDetailId, setParentDetailId] = useState<string | null>(null);
   const [editParentId, setEditParentId] = useState<string | null>(null);
@@ -400,16 +418,32 @@ export default function AllCommunitiesPage() {
     setEditCommunityId(id);
   };
 
-  const openParentDetail = (id: string) => {
+  const openParentViewDrawer = (id: string) => {
     setSelectedParentRow(id);
     setParentDetailId(id);
   };
 
-  const openParentEdit = (id: string) => {
-    setSelectedParentRow(id);
+  const goParentCompanyPage = (row: DemoParentCompanyRecord) => {
+    setSelectedParentRow(row.id);
     setParentDetailId(null);
-    setAddParentOpen(false);
-    setEditParentId(id);
+    navigate(`/communities/parent-companies/${encodeURIComponent(row.id)}`, {
+      state: {
+        parentCompanyRecord: row,
+        linkedCommunities: communities,
+      } satisfies ParentCompanyDetailLocationState,
+    });
+  };
+
+  const goParentCompanyFromCommunityRow = (row: DemoCommunityRecord, e?: MouseEvent) => {
+    e?.stopPropagation();
+    const parentRec = parentCompanies.find((p) => p.id === row.parent_company_id);
+    if (parentRec) {
+      goParentCompanyPage(parentRec);
+      return;
+    }
+    navigate(`/communities/parent-companies/${encodeURIComponent(row.parent_company_id)}`, {
+      state: { linkedCommunities: communities } satisfies ParentCompanyDetailLocationState,
+    });
   };
 
   const hasPrevious = safePage > 0;
@@ -1564,6 +1598,7 @@ export default function AllCommunitiesPage() {
                           <td className="min-w-0 max-w-0 px-4 py-4 align-middle xl:px-6">
                             <button
                               type="button"
+                              onClick={(e) => goParentCompanyFromCommunityRow(row, e)}
                               className="max-w-full truncate text-left font-source-sans-3 underline transition-opacity hover:opacity-80"
                               style={{ ...cellText, color: TEAL }}
                               title={row.parent_company_name}
@@ -1637,6 +1672,7 @@ export default function AllCommunitiesPage() {
                           <p className="mt-1 text-sm text-gray-600">{row.state}</p>
                           <button
                             type="button"
+                            onClick={(e) => goParentCompanyFromCommunityRow(row, e)}
                             className="mt-2 max-w-full truncate text-left text-sm underline"
                             style={{ color: TEAL }}
                           >
@@ -1742,7 +1778,7 @@ export default function AllCommunitiesPage() {
                         <tr
                           key={row.id}
                           className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => openParentDetail(row.id)}
+                          onClick={() => goParentCompanyPage(row)}
                         >
                           <td className="min-w-0 max-w-0 px-4 py-4 align-middle xl:px-6">
                             <span className="block truncate font-source-sans-3" style={cellText} title={row.name}>
@@ -1767,11 +1803,11 @@ export default function AllCommunitiesPage() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                openParentEdit(row.id);
+                                openParentViewDrawer(row.id);
                               }}
                               className="transition-opacity hover:opacity-80"
                               style={{ color: PARENT_PENCIL }}
-                              aria-label={`Edit ${row.name}`}
+                              aria-label={`View or edit ${row.name} in drawer`}
                             >
                               <Pencil size={18} strokeWidth={1.5} />
                             </button>
@@ -1790,11 +1826,11 @@ export default function AllCommunitiesPage() {
                       key={row.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => openParentDetail(row.id)}
+                      onClick={() => goParentCompanyPage(row)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') openParentDetail(row.id);
+                        if (e.key === 'Enter' || e.key === ' ') goParentCompanyPage(row);
                       }}
-                      className={`flex cursor-pointer items-center justify-between px-4 py-4 hover:bg-gray-50 ${
+                      className={`flex cursor-pointer items-center justify-between gap-2 px-4 py-4 hover:bg-gray-50 ${
                         selectedParentRow === row.id ? 'border-l-4 border-purple-500' : ''
                       }`}
                     >
@@ -1806,7 +1842,21 @@ export default function AllCommunitiesPage() {
                           {row.community_count} communities · {row.company_type}
                         </p>
                       </div>
-                      <ArrowRight size={20} strokeWidth={1.5} className="ml-2 flex-shrink-0 text-gray-500" />
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openParentViewDrawer(row.id);
+                          }}
+                          className="rounded-lg p-2 transition-opacity hover:opacity-80"
+                          style={{ color: PARENT_PENCIL }}
+                          aria-label={`View or edit ${row.name} in drawer`}
+                        >
+                          <Pencil size={18} strokeWidth={1.5} />
+                        </button>
+                        <ArrowRight size={20} strokeWidth={1.5} className="text-gray-500" aria-hidden />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1818,7 +1868,7 @@ export default function AllCommunitiesPage() {
                     <div
                       key={row.id}
                       className="rounded-xl border border-[#ACACAD] bg-white p-4"
-                      onClick={() => openParentDetail(row.id)}
+                      onClick={() => goParentCompanyPage(row)}
                       role="presentation"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1835,11 +1885,11 @@ export default function AllCommunitiesPage() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            openParentEdit(row.id);
+                            openParentViewDrawer(row.id);
                           }}
                           className="shrink-0 p-1"
                           style={{ color: PARENT_PENCIL }}
-                          aria-label={`Edit ${row.name}`}
+                          aria-label={`View or edit ${row.name} in drawer`}
                         >
                           <Pencil size={18} strokeWidth={1.5} />
                         </button>

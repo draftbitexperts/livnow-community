@@ -7,6 +7,7 @@ import AllCommunities from '@/pages/AllCommunities';
 import ParentCompanyDetail from '@/pages/ParentCompanyDetail';
 import ResidentDetail from '@/pages/ResidentDetail';
 import ComingSoon from '@/pages/ComingSoon';
+import Team from '@/pages/Team';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppLayout from '@/components/AppLayout';
 import { DemoResidentsProvider } from '@/contexts/DemoResidentsContext';
@@ -49,7 +50,7 @@ function App() {
           <Route path="communities" element={<AllCommunities />} />
           <Route path="communities/parent-companies/:parentId" element={<ParentCompanyDetail />} />
           <Route path="knowledge-base" element={<ComingSoon />} />
-          <Route path="team" element={<ComingSoon />} />
+          <Route path="team" element={<Team />} />
         </Route>
       </Routes>
       </DemoResidentsProvider>
