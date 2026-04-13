@@ -921,13 +921,15 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {toolbarMountRef
         ? toolbarPortalTarget && createPortal(toolbarRow, toolbarPortalTarget)
         : toolbarRow}
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="hidden lg:block overflow-x-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+          <div className="shrink-0">
           <table className="w-full" style={{ tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: '20%' }} />
@@ -997,7 +999,8 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
               </tr>
             </thead>
           </table>
-          <div className="overflow-hidden rounded-xl border border-[#ACACAD]">
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-hidden rounded-xl border border-[#ACACAD]">
             <table className="w-full" style={{ tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: '20%' }} />
@@ -1091,10 +1094,11 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
               </tbody>
             </table>
           </div>
+          </div>
         </div>
 
-        <div className="hidden md:block lg:hidden">
-          <div className="divide-y divide-gray-200">
+        <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex lg:hidden">
+          <div className="min-h-0 flex-1 divide-y divide-gray-200 overflow-y-auto overflow-x-auto">
             {filteredRows.map((c) => {
               const res = residentById.get(c.resident_id);
               return (
@@ -1134,7 +1138,9 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
           </div>
         </div>
 
-        <div className="md:hidden overflow-x-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto px-4">
+          <div className="shrink-0">
           <table className="min-w-[640px] w-full">
             <thead>
               <tr>
@@ -1144,7 +1150,8 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
               </tr>
             </thead>
           </table>
-          <div className="overflow-hidden rounded-xl border border-[#ACACAD]">
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-hidden rounded-xl border border-[#ACACAD]">
             <table className="min-w-[640px] w-full">
               <tbody className="divide-y divide-gray-200 bg-white">
                 {filteredRows.map((c) => {
@@ -1192,6 +1199,7 @@ export default function ResidentContactsTab({ residentRows, navigate, toolbarMou
                 })}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
 

@@ -365,7 +365,7 @@ export default function AllResidentsPage() {
           {/* Main Content Card — flex-1 so short lists still fill viewport */}
           <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
             <div
-              className="flex min-h-0 flex-1 flex-col"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
               style={{
                 backgroundColor: '#FFFFFF',
                 opacity: 1,
@@ -790,10 +790,12 @@ export default function AllResidentsPage() {
                   navigate={navigate}
                 />
               ) : (
-              <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <>
               {/* Desktop Table View – headers and body use same fixed column widths for alignment */}
-              <div className="hidden lg:block overflow-x-auto">
+              <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+                <div className="shrink-0">
                 <table className="w-full" style={{ tableLayout: 'fixed' }}>
                   <colgroup>
                     <col style={{ width: '17%' }} />
@@ -925,7 +927,11 @@ export default function AllResidentsPage() {
                     </tr>
                   </thead>
                 </table>
-                <div className="overflow-x-auto overflow-hidden rounded-xl" style={{ border: '1px solid #ACACAD', borderRadius: 12 }}>
+                </div>
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto overflow-hidden rounded-xl"
+                  style={{ border: '1px solid #ACACAD', borderRadius: 12 }}
+                >
                   <table className="w-full" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '17%' }} />
@@ -1095,11 +1101,12 @@ export default function AllResidentsPage() {
                     </tbody>
                   </table>
                 </div>
+                </div>
               </div>
 
               {/* Tablet List View */}
-              <div className="hidden md:block lg:hidden">
-                <div className="divide-y divide-gray-200">
+              <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex lg:hidden">
+                <div className="min-h-0 flex-1 divide-y divide-gray-200 overflow-y-auto overflow-x-auto">
                   {filteredResidents.map((resident) => (
                     <div
                       key={resident.id}
@@ -1149,8 +1156,9 @@ export default function AllResidentsPage() {
               </div>
 
               {/* Mobile Scrollable Table View – headers outside border, border only around body */}
-              <div className="md:hidden">
-                <div className="-mx-4 overflow-x-auto px-4">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto px-4">
+                <div className="shrink-0">
                   <table className="w-full min-w-[560px]">
                     <thead>
                       <tr>
@@ -1272,8 +1280,9 @@ export default function AllResidentsPage() {
                       </tr>
                     </thead>
                   </table>
+                </div>
                   <div
-                    className="-mx-4 overflow-x-auto overflow-hidden rounded-xl px-4"
+                    className="min-h-0 flex-1 overflow-y-auto overflow-hidden rounded-xl"
                     style={{ border: '1px solid #ACACAD', borderRadius: 12 }}
                   >
                     <table className="w-full min-w-[560px]">

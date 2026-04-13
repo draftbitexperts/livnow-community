@@ -669,7 +669,7 @@ export default function AllCommunitiesPage() {
 
       <div className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
         <div
-          className="flex min-h-0 flex-1 flex-col"
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{
             backgroundColor: '#FFFFFF',
             opacity: 1,
@@ -1487,8 +1487,10 @@ export default function AllCommunitiesPage() {
           </div>
 
           {mainTab === 'communities' ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="hidden lg:block">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+                <div className="shrink-0">
                 <table className="w-full" style={{ tableLayout: 'fixed' }}>
                   <colgroup>
                     <col style={{ width: '28%' }} />
@@ -1549,7 +1551,11 @@ export default function AllCommunitiesPage() {
                     </tr>
                   </thead>
                 </table>
-                <div className="overflow-hidden rounded-xl" style={{ border: '1px solid #ACACAD', borderRadius: 12 }}>
+                </div>
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto overflow-hidden rounded-xl"
+                  style={{ border: '1px solid #ACACAD', borderRadius: 12 }}
+                >
                   <table className="w-full" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '28%' }} />
@@ -1624,10 +1630,11 @@ export default function AllCommunitiesPage() {
                     </tbody>
                   </table>
                 </div>
+                </div>
               </div>
 
-              <div className="hidden md:block lg:hidden">
-                <div className="divide-y divide-gray-200 rounded-xl border border-[#ACACAD]">
+              <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex lg:hidden">
+                <div className="min-h-0 flex-1 divide-y divide-gray-200 overflow-y-auto overflow-x-auto rounded-xl border border-[#ACACAD]">
                   {pageCommunityRows.map((row) => (
                     <div
                       key={row.id}
@@ -1655,8 +1662,8 @@ export default function AllCommunitiesPage() {
                 </div>
               </div>
 
-              <div className="md:hidden">
-                <div className="-mx-4 space-y-2 px-4">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4">
                   {pageCommunityRows.map((row) => (
                     <div
                       key={row.id}
@@ -1702,8 +1709,10 @@ export default function AllCommunitiesPage() {
               </div>
             </div>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="hidden lg:block">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="hidden min-h-0 flex-1 flex-col overflow-hidden lg:flex">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto">
+                <div className="shrink-0">
                 <table className="w-full" style={{ tableLayout: 'fixed' }}>
                   <colgroup>
                     <col style={{ width: '30%' }} />
@@ -1764,7 +1773,11 @@ export default function AllCommunitiesPage() {
                     </tr>
                   </thead>
                 </table>
-                <div className="overflow-hidden rounded-xl" style={{ border: '1px solid #ACACAD', borderRadius: 12 }}>
+                </div>
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto overflow-hidden rounded-xl"
+                  style={{ border: '1px solid #ACACAD', borderRadius: 12 }}
+                >
                   <table className="w-full" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '30%' }} />
@@ -1817,10 +1830,11 @@ export default function AllCommunitiesPage() {
                     </tbody>
                   </table>
                 </div>
+                </div>
               </div>
 
-              <div className="hidden md:block lg:hidden">
-                <div className="divide-y divide-gray-200 rounded-xl border border-[#ACACAD]">
+              <div className="hidden min-h-0 flex-1 flex-col overflow-hidden md:flex lg:hidden">
+                <div className="min-h-0 flex-1 divide-y divide-gray-200 overflow-y-auto overflow-x-auto rounded-xl border border-[#ACACAD]">
                   {pageParentRows.map((row) => (
                     <div
                       key={row.id}
@@ -1862,8 +1876,8 @@ export default function AllCommunitiesPage() {
                 </div>
               </div>
 
-              <div className="md:hidden">
-                <div className="-mx-4 space-y-2 px-4">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:hidden">
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4">
                   {pageParentRows.map((row) => (
                     <div
                       key={row.id}
