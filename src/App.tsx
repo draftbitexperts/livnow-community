@@ -7,6 +7,7 @@ import AllCommunities from '@/pages/AllCommunities';
 import ParentCompanyDetail from '@/pages/ParentCompanyDetail';
 import ResidentDetail from '@/pages/ResidentDetail';
 import ComingSoon from '@/pages/ComingSoon';
+import UserProfile from '@/pages/UserProfile';
 import Team from '@/pages/Team';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AppLayout from '@/components/AppLayout';
@@ -44,7 +45,7 @@ function App() {
           }
         >
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="profile" element={<ComingSoon />} />
+          <Route path="profile" element={<UserProfile />} />
           <Route path="residents/all" element={<AllResidents />} />
           <Route path="residents/:residentId" element={<ResidentDetail />} />
           <Route path="communities" element={<AllCommunities />} />

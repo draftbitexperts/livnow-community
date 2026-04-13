@@ -1,9 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 
+const AUTH_STORAGE_KEY = 'livnow_community_user';
+const AUTH_CHANGED_EVENT = 'livnow-auth-changed';
+
+function readUserFromStorage(): User | null {
+  const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+  return stored ? JSON.parse(stored) : null;
+}
+
+function notifyAuthChanged() {
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
+  avatarDataUrl?: string | null;
 }
 
 export interface AuthState {
@@ -11,21 +24,22 @@ export interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  updateProfile: (updates: { name?: string; avatarDataUrl?: string | null }) => void;
 }
 
 export function useAuth(): AuthState {
-  const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem('livnow_community_user');
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [user, setUser] = useState<User | null>(() => readUserFromStorage());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem('livnow_community_user');
-    if (stored) {
-      setUser(JSON.parse(stored));
-    }
+    setUser(readUserFromStorage());
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const onAuthChanged = () => setUser(readUserFromStorage());
+    window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
   }, []);
 
   const login = useCallback(async (email: string, _password: string): Promise<{ success: boolean; error?: string }> => {
@@ -40,7 +54,8 @@ export function useAuth(): AuthState {
       };
 
       setUser(mockUser);
-      localStorage.setItem('livnow_community_user', JSON.stringify(mockUser));
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockUser));
+      notifyAuthChanged();
       return { success: true };
     } catch {
       return { success: false, error: 'An unexpected error occurred. Please try again.' };
@@ -49,8 +64,27 @@ export function useAuth(): AuthState {
 
   const logout = useCallback(() => {
     setUser(null);
-    localStorage.removeItem('livnow_community_user');
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    notifyAuthChanged();
   }, []);
 
-  return { user, loading, login, logout };
+  const updateProfile = useCallback((updates: { name?: string; avatarDataUrl?: string | null }) => {
+    const current = readUserFromStorage();
+    if (!current) return;
+    const next: User = {
+      ...current,
+      ...(updates.name !== undefined ? { name: updates.name } : {}),
+      ...(updates.avatarDataUrl !== undefined ? { avatarDataUrl: updates.avatarDataUrl } : {}),
+    };
+    try {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(next));
+      setUser(next);
+      notifyAuthChanged();
+    } catch {
+      // QuotaExceededError or other — caller should handle UX if needed
+      throw new Error('Could not save profile (storage may be full). Try a smaller image.');
+    }
+  }, []);
+
+  return { user, loading, login, logout, updateProfile };
 }

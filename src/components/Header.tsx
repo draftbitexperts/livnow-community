@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Menu, Bell, ChevronRight } from 'lucide-react';
+import { Menu, ChevronRight, CheckCheck } from 'lucide-react';
+import notificationIcon from '../../LivNow Icons/notification.png';
 import SearchNormalIcon from '@/components/SearchNormalIcon';
 import { useAuth } from '@/hooks/useAuth';
 import { useSidebarLayout } from '@/contexts/SidebarLayoutContext';
@@ -8,6 +9,38 @@ import { useDemoResidents } from '@/contexts/DemoResidentsContext';
 import { findDemoResidentInList, residentDisplayName } from '@/lib/demoResidents';
 import { DEMO_PARENT_COMPANIES } from '@/lib/demoCommunities';
 import type { ParentCompanyDetailLocationState } from '@/pages/ParentCompanyDetail';
+
+type DemoNotification = {
+  id: string;
+  title: string;
+  dateLabel: string;
+  initials: string;
+  unread: boolean;
+};
+
+const DEMO_NOTIFICATIONS_INITIAL: DemoNotification[] = [
+  {
+    id: '1',
+    title: 'New Resident added',
+    dateLabel: '04/13/2026',
+    initials: 'AS',
+    unread: true,
+  },
+  {
+    id: '2',
+    title: 'New chat message received',
+    dateLabel: '04/13/2026',
+    initials: 'AS',
+    unread: true,
+  },
+  {
+    id: '3',
+    title: 'Task has been assigned',
+    dateLabel: '04/13/2026',
+    initials: 'AS',
+    unread: false,
+  },
+];
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -66,6 +99,9 @@ export default function Header({
 
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const [notifications, setNotifications] = useState<DemoNotification[]>(DEMO_NOTIFICATIONS_INITIAL);
 
   const rawName =
     userName ??
@@ -101,17 +137,23 @@ export default function Header({
       .join('')
       .toUpperCase() || displayName.slice(0, 2).toUpperCase();
 
+  const unreadCount = notifications.filter((n) => n.unread).length;
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
         setProfileMenuOpen(false);
       }
+      if (notificationsRef.current && !notificationsRef.current.contains(target)) {
+        setNotificationsOpen(false);
+      }
     }
-    if (profileMenuOpen) {
+    if (profileMenuOpen || notificationsOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [profileMenuOpen]);
+  }, [profileMenuOpen, notificationsOpen]);
 
   const handleLogout = () => {
     setProfileMenuOpen(false);
@@ -295,20 +337,101 @@ export default function Header({
               <SearchNormalIcon size={22} />
             </button>
           </div>
-          <button
-            type="button"
-            disabled
-            aria-label="Notifications (coming soon)"
-            title="Notifications coming soon"
-            className="relative flex cursor-not-allowed items-center justify-center rounded-full border border-gray-300 p-2 opacity-70"
-            style={{ width: '40px', height: '40px', borderWidth: '1px' }}
-          >
-            <Bell size={24} className="text-gray-500" />
-          </button>
+          <div className="relative" ref={notificationsRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setProfileMenuOpen(false);
+                setNotificationsOpen((o) => !o);
+              }}
+              className="relative flex items-center justify-center rounded-full border p-2 transition-opacity hover:opacity-90"
+              style={{
+                width: '40px',
+                height: '40px',
+                borderWidth: '1px',
+                borderColor: '#359689',
+                backgroundColor: '#FFFFFF',
+              }}
+              aria-expanded={notificationsOpen}
+              aria-haspopup="dialog"
+              aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+            >
+              <img src={notificationIcon} alt="" width={24} height={24} className="block" />
+              {unreadCount > 0 && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 font-source-sans-3 text-[11px] font-bold leading-none text-white"
+                  style={{ backgroundColor: '#E57373' }}
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            {notificationsOpen && (
+              <div
+                className="absolute right-0 z-50 mt-2 w-[min(100vw-2rem,400px)] rounded-xl border border-gray-200 bg-white font-source-sans-3 shadow-lg"
+                style={{ boxShadow: '0 8px 24px rgba(50, 50, 52, 0.12)' }}
+                role="dialog"
+                aria-label="Notifications"
+              >
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                  <span className="text-base font-bold text-[#323234]">Notifications</span>
+                  <button
+                    type="button"
+                    onClick={() => setNotifications((list) => list.map((n) => ({ ...n, unread: false })))}
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ color: '#359689' }}
+                    disabled={unreadCount === 0}
+                  >
+                    <CheckCheck size={18} strokeWidth={2.25} aria-hidden />
+                    Mark all as read
+                  </button>
+                </div>
+                <ul className="max-h-[min(70vh,360px)] space-y-3 overflow-y-auto p-4">
+                  {notifications.map((n) => (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNotifications((list) =>
+                            list.map((item) =>
+                              item.id === n.id ? { ...item, unread: false } : item,
+                            ),
+                          )
+                        }
+                        className="flex w-full items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:bg-gray-50"
+                      >
+                        <span
+                          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                          style={{ backgroundColor: '#359689' }}
+                          aria-hidden
+                        >
+                          {n.initials}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-[#323234]">{n.title}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">{n.dateLabel}</p>
+                        </div>
+                        {n.unread && (
+                          <span
+                            className="mt-2 h-2 w-2 flex-shrink-0 rounded-full"
+                            style={{ backgroundColor: '#E57373' }}
+                            aria-label="Unread"
+                          />
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
           <div className="relative" ref={profileMenuRef}>
             <button
               type="button"
-              onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+              onClick={() => {
+                setNotificationsOpen(false);
+                setProfileMenuOpen(!profileMenuOpen);
+              }}
               className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full font-inter font-semibold text-white transition-opacity hover:opacity-90"
               style={{ backgroundColor: '#307584' }}
               aria-expanded={profileMenuOpen}
